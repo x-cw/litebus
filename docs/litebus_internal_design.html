@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteBus Internal Design Specification v0.1</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#d7ece8",
+        primaryTextColor: "#14302c",
+        primaryBorderColor: "#2a6b62",
+        lineColor: "#3d5a56",
+        secondaryColor: "#f3ead6",
+        tertiaryColor: "#e8eef2",
+        fontFamily: "Source Han Sans SC, Noto Sans SC, Segoe UI, sans-serif"
+      },
+      flowchart: { curve: "linear", padding: 10, nodeSpacing: 28, rankSpacing: 36 },
+      sequence: { actorMargin: 24, messageMargin: 28 },
+      state: { padding: 8 }
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #1a2422;
+      --muted: #5c6b68;
+      --paper: #f7f4ee;
+      --card: #fffefb;
+      --line: #d9d3c7;
+      --accent: #1f6f64;
+      --accent-2: #b45309;
+      --nav: #132422;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 16px/1.65 "Segoe UI", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    code, .mono {
+      font-family: "Cascadia Code", "Consolas", "Sarasa Mono SC", monospace;
+      font-size: 0.92em;
+    }
+    a { color: var(--accent); }
+    .layout { display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }
+    nav.toc {
+      background: var(--nav);
+      color: #d7e4e1;
+      padding: 1.2rem 0.85rem 2rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    nav.toc h1 {
+      font-size: 0.92rem;
+      letter-spacing: 0.04em;
+      margin: 0 0 0.2rem;
+      color: #fff;
+    }
+    nav.toc .ver { color: #8fb8b1; font-size: 0.78rem; margin-bottom: 1rem; }
+    nav.toc a {
+      display: block;
+      color: #c5d8d4;
+      text-decoration: none;
+      padding: 0.2rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+    nav.toc a:hover, nav.toc a:focus { background: #1e3a36; color: #fff; }
+    nav.toc .sub { padding-left: 0.85rem; font-size: 0.75rem; color: #9bb5b0; }
+    nav.toc .sub2 { padding-left: 1.55rem; font-size: 0.71rem; color: #86a39e; }
+    main { max-width: 1080px; padding: 2rem 2.4rem 4rem; }
+    header.hero {
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 1.2rem;
+      margin-bottom: 1.4rem;
+    }
+    header.hero h2 { margin: 0 0 0.35rem; font-size: 1.75rem; }
+    header.hero p { margin: 0.15rem 0; color: var(--muted); }
+    header.hero .meta { font-size: 0.88rem; margin-top: 0.6rem; }
+    h2 { margin-top: 2.3rem; font-size: 1.32rem; scroll-margin-top: 0.5rem; }
+    h3 { margin-top: 1.5rem; font-size: 1.1rem; scroll-margin-top: 0.5rem; }
+    h4 { margin-top: 1.15rem; font-size: 1rem; scroll-margin-top: 0.5rem; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--card);
+      font-size: 0.88rem;
+      margin: 0.6rem 0 1rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.4rem 0.55rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #ece7dc; }
+    td.sig { font-family: "Cascadia Code", Consolas, monospace; font-size: 0.84em; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.7rem 0 0.4rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 0.78rem;
+    }
+    .chip.core { background: #1d4e89; }
+    .chip.ext { background: #6b3fa0; }
+    .chip.rtl { background: #0f766e; }
+    .chip.warn { background: #9a3412; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+    .card h3 { margin: 0 0 0.4rem; }
+    .card ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+    .fig-block { margin: 1rem 0 1.8rem; }
+    .fig {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px 8px 0 0;
+      padding: 0.8rem 0.6rem 0.4rem;
+      overflow-x: auto;
+      margin: 0;
+    }
+    .fig figcaption {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.35rem 0 0.45rem;
+    }
+    .fig-explain {
+      background: #eef4f2;
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      padding: 0.85rem 1.05rem 1rem;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+    .fig-explain h4 { margin: 0 0 0.45rem; font-size: 0.88rem; color: var(--accent); }
+    .fig-explain ol, .fig-explain ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+    .fig-explain li { margin: 0.2rem 0; }
+    .fig-explain p { margin: 0.35rem 0 0; }
+    .chain {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.28rem;
+      margin: 0.6rem 0 1rem; padding: 0.7rem 0.75rem;
+      background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    }
+    .chain .n {
+      border-radius: 6px; padding: 0.32rem 0.5rem; font-size: 0.75rem; font-weight: 650;
+      border: 1px solid var(--line); background: #fff;
+    }
+    .chain .n.pd { background: #d7ece8; border-color: #2a6b62; }
+    .chain .n.aon { background: #f3ead6; border-color: #b45309; }
+    .chain .n.sw { background: #e4e8f4; border-color: #3d4f7a; }
+    .chain .arr { color: var(--muted); font-size: 0.85rem; }
+    .pack { display: flex; flex-wrap: wrap; gap: 2px; font-size: 0.75rem; margin: 0.3rem 0 0.8rem; }
+    .pack span { padding: 0.45rem 0.55rem; color: #fff; border-radius: 3px; }
+    pre.eq {
+      background: #142422; color: #dbeeea; padding: 0.9rem 1rem;
+      border-radius: 6px; overflow-x: auto; line-height: 1.55; font-size: 0.86rem;
+    }
+    .note {
+      border-left: 3px solid var(--accent-2);
+      padding: 0.5rem 0.8rem; background: #fbf3e6; margin: 1rem 0;
+    }
+    .ok {
+      border-left: 3px solid var(--accent);
+      padding: 0.5rem 0.8rem; background: #eef6f4; margin: 1rem 0;
+    }
+    .na { color: var(--muted); font-style: italic; }
+    ul.tight > li { margin: 0.25rem 0; }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      nav.toc { position: relative; height: auto; }
+      .grid2 { grid-template-columns: 1fr; }
+      main { padding: 1.2rem; }
+    }
+    @media print {
+      nav.toc { display: none; }
+      .layout { display: block; }
+      .fig-block { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <h1>LiteBus Internal</h1>
+  <div class="ver">Design Specification 0.1</div>
+  <a href="#rev">Revision History</a>
+  <a href="#term">Terminology</a>
+  <a href="#s1">1. Overview</a>
+  <a class="sub" href="#s11">1.1 Purpose</a>
+  <a class="sub" href="#s12">1.2 Top Diagram</a>
+  <a class="sub" href="#s13">1.3 Workflow</a>
+  <a href="#s2">2. Interfaces</a>
+  <a class="sub" href="#s21">2.1 Clock / Reset</a>
+  <a class="sub" href="#s22">2.2 External IP</a>
+  <a class="sub" href="#s23">2.3 Internal Fabric</a>
+  <a href="#s3">3. Descriptors</a>
+  <a class="sub" href="#s31">3.1 Flit Packing</a>
+  <a class="sub" href="#s32">3.2 Opcode / Resp</a>
+  <a class="sub" href="#s33">3.3 ID Model</a>
+  <a href="#s4">4. Design Constraints</a>
+  <a href="#s5">5. Requirements / Feature</a>
+  <a class="sub" href="#s51">5.1 Feature List</a>
+  <a class="sub" href="#s52">5.2 Interface</a>
+  <a class="sub" href="#s53">5.3 Principles</a>
+  <a href="#s6">6. Open Issues</a>
+  <a href="#s7">7. Hardware Implementation</a>
+  <a class="sub" href="#s71">7.1 INIU</a>
+  <a class="sub2" href="#s711">7.1.1 I/O</a>
+  <a class="sub2" href="#s712">7.1.2 Function</a>
+  <a class="sub2" href="#s713">7.1.3 Hardware</a>
+  <a class="sub" href="#s72">7.2 TNIU</a>
+  <a class="sub2" href="#s721">7.2.1 I/O</a>
+  <a class="sub2" href="#s722">7.2.2 Function</a>
+  <a class="sub2" href="#s723">7.2.3 Hardware</a>
+  <a class="sub" href="#s73">7.3 Switch</a>
+  <a class="sub2" href="#s731">7.3.1 I/O</a>
+  <a class="sub2" href="#s732">7.3.2 Function</a>
+  <a class="sub2" href="#s733">7.3.3 Hardware</a>
+  <a class="sub" href="#s74">7.4 Credit</a>
+  <a class="sub2" href="#s741">7.4.1 I/O</a>
+  <a class="sub2" href="#s742">7.4.2 Function</a>
+  <a class="sub2" href="#s743">7.4.3 Hardware</a>
+  <a class="sub" href="#s75">7.5 Link</a>
+  <a class="sub2" href="#s751">7.5.1 I/O</a>
+  <a class="sub2" href="#s752">7.5.2 Function</a>
+  <a class="sub2" href="#s753">7.5.3 Hardware</a>
+  <a class="sub" href="#s76">7.6 Unify Gearbox</a>
+  <a class="sub2" href="#s761">7.6.1 I/O</a>
+  <a class="sub2" href="#s752u">7.6.2 Function</a>
+  <a class="sub2" href="#s763">7.6.3 Hardware</a>
+  <a class="sub" href="#s77">7.7 BCA</a>
+  <a class="sub2" href="#s771">7.7.1 I/O</a>
+  <a class="sub2" href="#s772">7.7.2 Function</a>
+  <a class="sub2" href="#s773">7.7.3 Hardware</a>
+  <a class="sub" href="#s78">7.8 Pipe</a>
+  <a class="sub2" href="#s781">7.8.1 I/O</a>
+  <a class="sub2" href="#s782">7.8.2 Function</a>
+  <a class="sub2" href="#s783">7.8.3 Hardware</a>
+  <a class="sub" href="#s79">7.9 Common</a>
+  <a href="#s8">8. Low Power Design</a>
+  <a href="#s9">9. Performance</a>
+  <a href="#s10">10. Cost / Area</a>
+  <a href="#s11">11. DFX</a>
+  <a href="#s12">12. Patents</a>
+</nav>
+
+<main>
+<header class="hero">
+  <h2>LiteBus Internal Design Specification</h2>
+  <p>LiteBus BASIC-CORE 内部设计实现细节与原理（INIU / TNIU / Switch / Link / Credit / Unify / BCA）</p>
+  <p class="meta">
+    Author: xucw &nbsp;|&nbsp; Version: 0.1 &nbsp;|&nbsp; Date: 10/09/2026<br>
+    权威来源：<span class="mono">litebus_rtl/</span>（冻结，不修改）&nbsp;|&nbsp;
+    配套文档：<span class="mono">Litebus_principle.md</span> v1.2、
+    <span class="mono">Litebus_motivation_feature_performance.md</span> v1.1
+  </p>
+  <div class="chips">
+    <span class="chip core">BASIC-CORE</span>
+    <span class="chip ext">EXTENDED 规划</span>
+    <span class="chip rtl">Verilog-2001</span>
+    <span class="chip warn">litebus_rtl 冻结</span>
+  </div>
+</header>
+
+<h2 id="rev">Revision History</h2>
+<table>
+  <thead>
+    <tr><th>Date</th><th>Revision</th><th>Author</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>2026/09/10</td>
+      <td>V0.1</td>
+      <td>xucw</td>
+      <td>初始版本。依据 principle / motivation 文档与 <span class="mono">litebus_rtl</span> 现网实现整理内部设计规格，供 DE / DV 使用。</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="term">Terminology</h2>
+<table>
+  <thead>
+    <tr><th>No.</th><th>Term</th><th>Full Name</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>INIU</td><td>Initiator Network Interface Unit</td><td>发起侧 NIU。Master IP 准入：地址译码、SrcID 注入、total_bytes 计算、vld-rdy ↔ credit。</td></tr>
+    <tr><td>2</td><td>TNIU</td><td>Target Network Interface Unit</td><td>目标侧 NIU。CMD TABLE 分配/释放、Slave 适配、读交织 fragment、lane_pack。</td></tr>
+    <tr><td>3</td><td>Flit</td><td>Flow control digit</td><td>网络内传输单元。本设计中写数据通道与读响应通道以事务/fragment 为仲裁粒度，非 Flit 级交织仲裁。</td></tr>
+    <tr><td>4</td><td>CMD</td><td>Command</td><td>请求命令描述符。读通道单独成包；写通道与 WD 同拍打包。</td></tr>
+    <tr><td>5</td><td>WD</td><td>Write Data</td><td>写数据半包：data / strb / last。REQ_W 上与 CMD 同拍。</td></tr>
+    <tr><td>6</td><td>REQ_R / REQ_W</td><td>Request Read / Write</td><td>四通道中的两条请求物理通道。读命令走 REQ_R，写命令+写数据走 REQ_W。</td></tr>
+    <tr><td>7</td><td>RSP_RD / RSP_WR</td><td>Read / Write Response</td><td>读数据响应与写完成响应。路由字段为 SrcID。</td></tr>
+    <tr><td>8</td><td>Lane / Total_bytes</td><td>Phase locator</td><td>相位型事务定位标。Lane = 地址在当前数据位宽下的字节相位；Total_bytes = 有效字节数。</td></tr>
+    <tr><td>9</td><td>ExtID / IntID / LID</td><td>Transaction IDs</td><td>Master 原生 ID、网络统一 ID、TNIU CMD TABLE 索引（Slave 侧 txnid）。</td></tr>
+    <tr><td>10</td><td>SrcID / DestID</td><td>Source / Destination NIU ID</td><td>INIU / TNIU 身份。请求按 DestID 路由，响应按 SrcID 回程。</td></tr>
+    <tr><td>11</td><td>Credit</td><td>Credit-based flow control</td><td>内部接口流控。发送端持有对端 ingress FIFO 深度的信用，无反向 ready。</td></tr>
+    <tr><td>12</td><td>BCA</td><td>Bounded Clock-domain Adapter</td><td>异步桥。Gray 计数 CDC + 对端组合读 mux。</td></tr>
+    <tr><td>13</td><td>Unify</td><td>Phase-aligned gearbox</td><td>相位对齐位宽转换。字节落位是地址的纯函数，与转换历史无关。</td></tr>
+    <tr><td>14</td><td>HOL</td><td>Head-of-Line Blocking</td><td>事务级仲裁下头事务反压阻塞后续事务。由 XBAR FIFO 缓解。</td></tr>
+    <tr><td>15</td><td>W_frag / FB</td><td>Fragment block</td><td>读交织重组粒度。FB = max(Slave 位宽, 该 Slave 上 Master 最大位宽)。</td></tr>
+    <tr><td>16</td><td>BASIC / EXTENDED</td><td>Core split</td><td>BASIC 追求高频高带宽；同 ID、拆包、narrow、AMBA 桥归 EXTENDED。</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s1">1. Overview</h2>
+<h3 id="s11">1.1 Purpose</h3>
+<p>本文档主要供 DE 与 DV 工程师使用。描述 LiteBus BASIC-CORE 的内部协议、接口打包、约束与 RTL 实现，对应冻结目录 <span class="mono">litebus_rtl/</span>。</p>
+<ol>
+  <li>第 2 章描述外部 Valid-Ready 接口与内部 Credit 接口。</li>
+  <li>第 3 章描述 Flit 描述符、opcode / resp 编码、三种 ID 变迁。</li>
+  <li>第 5 章给出 BASIC-CORE 原则与 feature。</li>
+  <li>第 7 章按模块给出 I/O、功能与硬件实现。</li>
+</ol>
+<p>LiteBus 的研发动机来自 GP3A FlexNoC 落地痛点：BIF→AXI 协议税、强制同 ID 保序 CAM、两通道读写竞争、Valid-Ready 双向时序与布线拥堵、商业 IP 黑盒。LiteBus 的对策是：BIF 友好的自定义接口、同 ID 从 BASIC 剥离、四通道分离、Credit 流控、白盒可扩展。</p>
+<div class="grid2">
+  <div class="card">
+    <h3>BASIC-CORE</h3>
+    <ul>
+      <li>INIU / TNIU / Switch / Link</li>
+      <li>四通道、Credit、事务级仲裁</li>
+      <li>相位对齐位宽转换</li>
+      <li>读交织 fragment（TNIU 适配）</li>
+      <li>可选 RR-QoS、Atomic</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>EXTENDED-CORE（规划，不在本 RTL）</h3>
+    <ul>
+      <li>AXI/APB ↔ LiteBus Adaptor</li>
+      <li>Narrow burst merge</li>
+      <li>Burst split / Simple split</li>
+      <li>One_trans_fly / ROB</li>
+    </ul>
+  </div>
+</div>
+<div class="note">
+  <span class="mono">litebus_rtl</span> 中 INIU/TNIU adaptor 的 <span class="mono">EXT_PROTOCOL=AXI/APB</span> 仅为 TODO 占位；真正的 AMBA 桥在仓库 <span class="mono">rtl/adapter_*.v</span>，不属于 BASIC-CORE，本文不展开 adapter。
+</div>
+
+<h3 id="s12">1.2 Top Diagram</h3>
+<p>BASIC-CORE 由 Initiator NIU、Fabric（Switch + Link）、Target NIU 组成。Master / Slave 侧为 Valid-Ready；NIU 内部与 Fabric 之间为 Credit。四条物理通道全程分离：REQ_R、REQ_W、RSP_RD、RSP_WR。</p>
+<div class="fig-block">
+  <figure class="fig">
+    <div class="mermaid">
+flowchart LR
+  subgraph masters [Master IP]
+    M0[Master0]
+    M1[Master1]
+  end
+  subgraph inius [INIU]
+    I0[INIU0]
+    I1[INIU1]
+  end
+  subgraph fabric [Fabric]
+    SW[Switch]
+    LK[Link PIPE NODE BCA Unify]
+  end
+  subgraph tnius [TNIU]
+    T0[TNIU0]
+    T1[TNIU1]
+  end
+  subgraph slaves [Slave IP]
+    S0[Slave0]
+    S1[Slave1]
+  end
+  M0 -->|VR four ch| I0
+  M1 -->|VR four ch| I1
+  I0 -->|Credit flit| SW
+  I1 -->|Credit flit| SW
+  SW --> LK
+  LK --> T0
+  LK --> T1
+  T0 -->|VR four ch| S0
+  T1 -->|VR four ch| S1
+    </div>
+    <figcaption>图 1-2-1 LiteBus BASIC-CORE 顶层结构</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>模块职责</h4>
+    <ul>
+      <li><b>INIU</b>：外部 CMD 译码为网络 CMD flit（DestID、SrcID、addr_local、total_bytes、IntID）；REQ_R / REQ_W 两条完全并行链，互不仲裁。</li>
+      <li><b>Switch</b>：按 DestID（请求）或 SrcID（响应）查路由表；事务级仲裁；可选 XBAR FIFO 缓解 HOL；HAS_LAST 通道做 burst-lock。</li>
+      <li><b>Link</b>：PIPE（信用打拍）、NODE（信用分段）、BCA（跨时钟）、Unify（位宽转换）。Switch 本身等宽，转换全部下放到 Unify-LINK。</li>
+      <li><b>TNIU</b>：共享 CMD TABLE 分配 LID；cmd_conv 重建 Slave len；lane_pack 生成范围 STRB；读交织时 rsp_rd_frag 把 beat 切成独立 fragment。</li>
+    </ul>
+  </div>
+</div>
+
+<h3 id="s13">1.3 Workflow</h3>
+<h4>写事务</h4>
+<div class="chain">
+  <span class="n pd">Master REQ_W</span><span class="arr">→</span>
+  <span class="n">ext_pipe</span><span class="arr">→</span>
+  <span class="n">id_decode</span><span class="arr">→</span>
+  <span class="n">credit_egress</span><span class="arr">→</span>
+  <span class="n">int_pipe</span><span class="arr">→</span>
+  <span class="n sw">Switch / Link</span><span class="arr">→</span>
+  <span class="n aon">TNIU ingress</span><span class="arr">→</span>
+  <span class="n aon">cmd_table</span><span class="arr">→</span>
+  <span class="n aon">cmd_conv + lane_pack</span><span class="arr">→</span>
+  <span class="n pd">Slave</span>
+</div>
+<div class="chain">
+  <span class="n pd">Slave RSP_WR</span><span class="arr">→</span>
+  <span class="n aon">查表释放 LID</span><span class="arr">→</span>
+  <span class="n">credit_egress</span><span class="arr">→</span>
+  <span class="n sw">Switch 按 SrcID</span><span class="arr">→</span>
+  <span class="n">INIU ingress</span><span class="arr">→</span>
+  <span class="n pd">Master</span>
+</div>
+<p>写请求每拍一张 REQ_W flit（CMD 在突发内重复，WD 逐拍变化）。TNIU 仅在首拍分配 CMD 槽，后续拍复用 <span class="mono">burst_lid</span>，并用 <span class="mono">wd_beat_idx</span> 驱动 lane_pack。</p>
+
+<h4>读事务</h4>
+<div class="chain">
+  <span class="n pd">Master REQ_R</span><span class="arr">→</span>
+  <span class="n">id_decode</span><span class="arr">→</span>
+  <span class="n sw">Fabric CMD-only</span><span class="arr">→</span>
+  <span class="n aon">cmd_table + cmd_conv</span><span class="arr">→</span>
+  <span class="n pd">Slave</span>
+</div>
+<div class="chain">
+  <span class="n pd">Slave RSP_RD 可交织</span><span class="arr">→</span>
+  <span class="n aon">rsp_rd_frag</span><span class="arr">→</span>
+  <span class="n sw">Switch burst-lock on last</span><span class="arr">→</span>
+  <span class="n">INIU 截 IntID</span><span class="arr">→</span>
+  <span class="n pd">Master 见 trans_last</span>
+</div>
+<div class="fig-block">
+  <figure class="fig">
+    <div class="mermaid">
+sequenceDiagram
+  participant MST as Master
+  participant INIU as INIU
+  participant SW as Switch
+  participant TNIU as TNIU
+  participant SLV as Slave
+  MST->>INIU: REQ_R valid CMD
+  INIU->>INIU: dest_id total_bytes src_id
+  INIU->>SW: credit send REQ_R flit
+  SW->>TNIU: route DestID
+  TNIU->>TNIU: alloc LID store ctx
+  TNIU->>SLV: REQ_R LID as txnid
+  SLV-->>TNIU: RSP_RD beats maybe interleaved
+  TNIU->>TNIU: fragment plus assembly if needed
+  TNIU->>SW: RSP_RD last locks port
+  SW->>INIU: route SrcID
+  INIU-->>MST: rsp_rd_last from trans_last
+    </div>
+    <figcaption>图 1-3-1 读事务端到端（含可选读交织）</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>为何 fragment 能与事务级 Switch 共存</h4>
+    <p>Switch 不感知“母事务”，只认 HAS_LAST 通道上的 <span class="mono">last</span>。TNIU 把 Slave 交织返回的每一拍（或拼好的 FB 块）变成带独立 Lane / Total_bytes / last 的 fragment。对 Switch 而言每个 fragment 仍是不可打断的完整“事务”。INIU 用 <span class="mono">trans_last</span> 还原 Master 语义上的 burst 结束。</p>
+  </div>
+</div>
+
+<h2 id="s2">2. Interfaces</h2>
+<p>复位约定：<span class="mono">rst_n</span> 异步置位、同步释放，由顶层 CRM 做同步释放。时钟在 NIU 两侧可不同（BCA 形态）；同域形态无 BCA。</p>
+
+<h3 id="s21">2.1 Clock / Reset</h3>
+<table>
+  <thead><tr><th>信号</th><th>位宽</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">clk / clk_m / clk_s</td><td>1</td><td>input</td><td>网络域 / Master 域 / Slave 域时钟。</td></tr>
+    <tr><td class="sig">rst_n / mrst_n / srst_n</td><td>1</td><td>input</td><td>对应域低有效复位。</td></tr>
+    <tr><td class="sig">clk_w / wrst_n</td><td>1</td><td>input</td><td>Link / BCA 写侧（上游）时钟复位。</td></tr>
+    <tr><td class="sig">clk_r / rrst_n</td><td>1</td><td>input</td><td>Link / BCA 读侧（下游）时钟复位。同域时与 clk_w 绑在一起。</td></tr>
+  </tbody>
+</table>
+
+<h3 id="s22">2.2 External IP（Valid-Ready）</h3>
+<p>Master↔INIU 与 TNIU↔Slave 使用同一套 LiteBus 外部语义。通道独立握手。参数范围见第 5.2 节。</p>
+<h4>REQ_W</h4>
+<table>
+  <thead><tr><th>信号</th><th>位宽</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">req_w_valid / req_w_ready</td><td>1</td><td>双向握手</td><td>Valid-Ready。Master→INIU 或 TNIU→Slave。</td></tr>
+    <tr><td class="sig">req_w_opcode</td><td>4</td><td>请求方向</td><td>4'h8 普通写；4'hC/D/E/F 原子。bit3 必须为 1，否则全网当读处理。</td></tr>
+    <tr><td class="sig">req_w_addr</td><td>8–64</td><td>请求方向</td><td>Master 侧全局地址；Slave 侧 local 地址。</td></tr>
+    <tr><td class="sig">req_w_len</td><td>1–12</td><td>请求方向</td><td>拍数 − 1。len=0 表示 1 拍。</td></tr>
+    <tr><td class="sig">req_w_txnid</td><td>1–16</td><td>请求方向</td><td>Master 侧 ExtID。TNIU 侧为 LID，Slave 必须原样回传。</td></tr>
+    <tr><td class="sig">req_w_user</td><td>0–64</td><td>请求方向</td><td>CMD 边带。宽度 0 时顶层省略引脚。</td></tr>
+    <tr><td class="sig">req_w_wdata / req_w_wstrb</td><td>8–1024 / DW/8</td><td>请求方向</td><td>写数据与字节使能。数据位宽 2^n。</td></tr>
+    <tr><td class="sig">req_w_wlast</td><td>1</td><td>请求方向</td><td>写突发末拍。Switch REQ_W 的 burst-lock 锁此位（内部 WD.last）。</td></tr>
+    <tr><td class="sig">req_w_modifier</td><td>0–7</td><td>请求方向</td><td>原子修饰符。INT_MOD_W=0 时整段消失。</td></tr>
+    <tr><td class="sig">req_w_qos</td><td>0–4</td><td>请求方向</td><td>数值越大优先级越高。只存在于请求；响应由 TNIU 查表带回。</td></tr>
+  </tbody>
+</table>
+<h4>REQ_R</h4>
+<table>
+  <thead><tr><th>信号</th><th>位宽</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">req_r_valid / req_r_ready</td><td>1</td><td>双向握手</td><td>独立于 REQ_W，读请求不会排在写数据后面。</td></tr>
+    <tr><td class="sig">req_r_opcode</td><td>4</td><td>请求方向</td><td>bit3=0 为读。RTL 默认 4'h1。</td></tr>
+    <tr><td class="sig">req_r_addr / len / txnid / user / qos</td><td>同 CMD</td><td>请求方向</td><td>无 WD。网络内 REQ_R flit 宽度等于 CMD flit，不做数据位宽转换。</td></tr>
+  </tbody>
+</table>
+<h4>RSP_RD</h4>
+<table>
+  <thead><tr><th>信号</th><th>位宽</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">rd_valid / rd_ready</td><td>1</td><td>双向握手</td><td>Slave→TNIU 或 INIU→Master。</td></tr>
+    <tr><td class="sig">rd_last</td><td>1</td><td>响应方向</td><td>到达 Master 的是 <b>trans_last</b>（事务级）。内部 fragment 级 last 不得出网。</td></tr>
+    <tr><td class="sig">rd_resp</td><td>2</td><td>响应方向</td><td>见 3.2。总线透传，自身不生成。</td></tr>
+    <tr><td class="sig">rd_txnid / rd_user / rd_data</td><td>参数化</td><td>响应方向</td><td>无 byte_valid 引脚：接收端用 (addr_lane, total_bytes, beat) 重建有效字节。</td></tr>
+  </tbody>
+</table>
+<h4>RSP_WR</h4>
+<table>
+  <thead><tr><th>信号</th><th>位宽</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">wr_valid / wr_ready</td><td>1</td><td>双向握手</td><td>单拍写响应。</td></tr>
+    <tr><td class="sig">wr_resp / wr_txnid / wr_user</td><td>2 / 1–16 / 0–64</td><td>响应方向</td><td>无 last、无 data。HAS_LAST=0，Switch 不 burst-lock。</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  外部打包（INIU 参数，MSB→LSB）：
+  <span class="mono">EXT_CMD = {qos, opcode, addr, len, txnid, user}</span>；
+  <span class="mono">EXT_WD = {data, strb, last, txnid}</span>；
+  <span class="mono">EXT_REQ_W = {CMD, mod, WD}</span>；
+  <span class="mono">EXT_RSP_RD = {txnid, resp, user, last, data}</span>；
+  <span class="mono">EXT_RSP_WR = {txnid, resp, user}</span>。
+</div>
+
+<h3 id="s23">2.3 Internal Fabric（Credit）</h3>
+<p>内部接口无 ready。发送端 <span class="mono">out_valid</span> 仅在仍有 credit 时拉高；对端 pop 时脉冲 <span class="mono">credit_return</span>。Credit 初值必须等于对端 ingress FIFO 深度，由拓扑生成器配对。</p>
+<table>
+  <thead><tr><th>信号</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">*_flit / *_valid</td><td>下游</td><td>前向 flit。无 ready。</td></tr>
+    <tr><td class="sig">*_credit_ret</td><td>上游</td><td>每 pop 一拍脉冲。可与发送同拍（零延迟 return）。</td></tr>
+  </tbody>
+</table>
+<p>四通道各有独立 credit 环，互不借用。PIPE 形态不消耗/产生 credit，只对 payload+valid 与 credit_return 对称打拍，端到端仍是一条 credit 环，初值需覆盖往返寄存器数。</p>
+
+<h2 id="s3">3. Descriptors</h2>
+<h3 id="s31">3.1 Flit Packing</h3>
+<p>打包顺序 MSB→LSB。字段宽度全部来自模块参数；<span class="mono">lb_defines.vh</span> 只固定常量与字段次序。Pipe / credit / bca 把 flit 当不透明向量搬运，只有 id_decode 与 NIU adaptor 解码字段。</p>
+
+<p><b>CMD flit</b>（即 REQ_R 整包）</p>
+<div class="pack">
+  <span style="background:#0f766e">qos</span>
+  <span style="background:#1d4e89">opcode</span>
+  <span style="background:#3d4f7a">addr_local</span>
+  <span style="background:#6b3fa0">total_bytes</span>
+  <span style="background:#9a3412">user</span>
+  <span style="background:#1f6f64">int_id</span>
+  <span style="background:#b45309">dest_id</span>
+  <span style="background:#7c2d12">src_id</span>
+</div>
+<pre class="eq">INT_CMD_FLIT_W = INT_QOS_W + 4 + INT_ADDR_LOCAL_WIDTH + INT_TOTBYTES_W
+                 + INT_USER_WIDTH_CMD + INT_ID_WIDTH + INT_DEST_ID_WIDTH + INT_SRC_ID_WIDTH
+qos / user 宽度为 0 时该字段从 flit 中消失，而不是塞 0 占位（与“本 Master 无引脚、总线仍有该字段”不同：后者零填充）。</pre>
+
+<p><b>WD flit</b>（REQ_W 低半部）</p>
+<div class="pack">
+  <span style="background:#1d4e89">last</span>
+  <span style="background:#9a3412">strb</span>
+  <span style="background:#1f6f64">data</span>
+  <span style="background:#5c6b68">dest_id=0</span>
+  <span style="background:#5c6b68">src_id=0</span>
+</div>
+<p>WD 半包的 dest/src 恒 0：REQ_W 由 CMD 半包的 dest_id 路由。</p>
+
+<p><b>REQ_W flit</b></p>
+<div class="pack">
+  <span style="background:#0f766e">CMD</span>
+  <span style="background:#6b3fa0">mod</span>
+  <span style="background:#1d4e89">WD</span>
+</div>
+<p>一拍同时携带命令与写数据。写突发期间 CMD 重复。INT_MOD_W=0 时无 mod 段。</p>
+
+<p><b>RSP_RD flit</b>（低→高列出，src_id 在 MSB，供回程 Switch 与前向 dest_id 同位）</p>
+<div class="pack">
+  <span style="background:#7c2d12">src_id</span>
+  <span style="background:#0f766e">qos</span>
+  <span style="background:#6b3fa0">addr_lane</span>
+  <span style="background:#3d4f7a">total_bytes</span>
+  <span style="background:#1f6f64">int_id</span>
+  <span style="background:#b45309">resp</span>
+  <span style="background:#9a3412">user</span>
+  <span style="background:#1d4e89">trans_last</span>
+  <span style="background:#0e4d64">last</span>
+  <span style="background:#2a6b62">data</span>
+</div>
+<table>
+  <thead><tr><th>位</th><th>语义</th><th>消费者</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">last</td><td>Fragment 级末拍。Switch burst-lock 锁这一位。</td><td>仅 Fabric 内部，不得出 IP。</td></tr>
+    <tr><td class="sig">trans_last</td><td>母事务末拍。INIU 将其接到 Master 的 rsp_rd_last。</td><td>Master IP。</td></tr>
+  </tbody>
+</table>
+<div class="ok">
+  不变量：<span class="mono">trans_last ⇒ last</span>。由 <span class="mono">lb_tniu_rsp_rd_frag</span> 建立（<span class="mono">o_trans_last = o_last &amp;&amp; s_tl</span>）；Unify DOWN 会暂时打破（trans_last 骑在 sb[0]，每个子拍都会出现）；<span class="mono">lb_rsp_rd_unify_adapt</span> 用 <span class="mono">o_tl = o_sb[0] &amp;&amp; o_last</span> 恢复。INIU 若看到 trans_last 而 last=0 会仿真报错。
+</div>
+<p>RSP_RD 不携带 byte_valid：512-bit 可省 47 bit/拍。接收端按 R4 重建 mask。</p>
+
+<p><b>RSP_WR flit</b></p>
+<div class="pack">
+  <span style="background:#7c2d12">src_id</span>
+  <span style="background:#0f766e">qos</span>
+  <span style="background:#1f6f64">int_id</span>
+  <span style="background:#b45309">resp</span>
+  <span style="background:#9a3412">user</span>
+</div>
+
+<h3 id="s32">3.2 Opcode / Resp</h3>
+<table>
+  <thead><tr><th>宏</th><th>值</th><th>通道</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">LB_OP_RD</td><td>4'h1</td><td>REQ_R</td><td>bit3=0。</td></tr>
+    <tr><td class="sig">LB_OP_WR</td><td>4'h8</td><td>REQ_W</td><td>bit3=1。仅 B 响应。</td></tr>
+    <tr><td class="sig">LB_OP_ATOMIC_STORE</td><td>4'hC</td><td>REQ_W</td><td>仅 B。释放时机与普通写相同。</td></tr>
+    <tr><td class="sig">LB_OP_ATOMIC_LOAD</td><td>4'hD</td><td>REQ_W</td><td>B + R。CMD TABLE 收齐两者才释放。</td></tr>
+    <tr><td class="sig">LB_OP_ATOMIC_SWAP</td><td>4'hE</td><td>REQ_W</td><td>B + R。</td></tr>
+    <tr><td class="sig">LB_OP_ATOMIC_COMPARE</td><td>4'hF</td><td>REQ_W</td><td>B + R。失败码由 Slave 放在读响应上透传。</td></tr>
+    <tr><td class="sig">LB_OP_MC_WR / REDUCE</td><td>4'hA/B/4</td><td>—</td><td>注释保留，未实现。</td></tr>
+  </tbody>
+</table>
+<p>RTL 只解码 <span class="mono">opcode[3]</span> 判断读写族。写 opcode 若 bit3 清零，会在错误通道上被当成读，静默错误。TNIU 对 REQ_W 另有写 opcode 断言。</p>
+<table>
+  <thead><tr><th>宏</th><th>值</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">LB_RESP_OK</td><td>2'b00</td><td>成功。</td></tr>
+    <tr><td class="sig">LB_RESP_FAIL</td><td>2'b01</td><td>失败（RTL）。</td></tr>
+    <tr><td class="sig">LB_RESP_ATOMIC_FAIL</td><td>2'b10</td><td>ATOMIC_COMPARE 失败，仅透传。</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  principle / motivation 文档写 rd_resp：2'b00 OK、2'b10 FAIL。RTL <span class="mono">lb_defines.vh</span> 将 FAIL 定为 2'b01，并把 2'b10 留给原子比较失败。以实现为准。Adapter 与 DV 不得混用两套编码。
+</div>
+
+<h3 id="s33">3.3 ID Model</h3>
+<div class="fig-block">
+  <figure class="fig">
+    <div class="mermaid">
+flowchart LR
+  subgraph fwd [Forward REQ]
+    ExtM[ExtID Master]
+    IntN[IntID padded]
+    Dest[DestID from mmap]
+    Src[SrcID NIU_ID]
+  end
+  subgraph tniu [TNIU]
+    Tab[CMD TABLE]
+    Lid[LID index]
+  end
+  subgraph slv [Slave]
+    ExtS[ExtID Slave equals LID]
+  end
+  ExtM --> IntN
+  Dest --> Tab
+  Src --> Tab
+  IntN --> Tab
+  Tab --> Lid
+  Lid --> ExtS
+    </div>
+    <figcaption>图 3-3-1 请求方向 ID 变迁</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>三种身份</h4>
+    <ul>
+      <li><b>ExtID（Master）</b>：原生 txnid。BASIC 不允许网络中同时存在同 ID（含 RR / WW / 普通与原子）。INIU 不查重、不反压 outstanding，闸门在 Master / EXTENDED。</li>
+      <li><b>IntID</b>：零扩展到网络最大 ID 位宽。</li>
+      <li><b>SrcID / DestID</b>：INIU 注入 SrcID=NIU_ID；id_decode 用 (addr &amp; MASK)==BASE 并行命中区域得到 DestID，addr_local = addr &amp; ~MASK。</li>
+      <li><b>LID</b>：只存在于 TNIU↔Slave。Fabric 用 {src_id, dest_id, int_id}。LID 是表项下标，零扩展到 Slave txnid 位宽；回程截断后查表。dest_id 不入库（本 TNIU 即目的地）。</li>
+    </ul>
+  </div>
+</div>
+<p>回程：Slave 回传 LID → 查表还原 src_id / int_id / qos /（读）addr_lane+total_bytes → Switch 按 SrcID 路由 → INIU 截 IntID 为 Master ExtID。</p>
+<p>CMD TABLE 不记录同一 {SrcID, IntID} 的到达顺序，因此 <b>不支持同 ID</b>。仿真对同 (int_id, src_id) 双活条目报警。</p>
+
+<h2 id="s4">4. Design Constraints</h2>
+<ul class="tight">
+  <li>BASIC-CORE 不允许同 ID。CMD TABLE 满则 TNIU 反压。INIU 无 pending 闸门。</li>
+  <li>MASTER 的 <span class="mono">(len+1)×wdata</span> 不得超过 SLAVE 的 MAX Burst Size；超限必须在 EXTENDED 或 Master IP 侧拆包。BASIC 不做自主拆包。</li>
+  <li>有读交织的 PAIR：Master 位宽最好 ≤ Slave，否则 TNIU 必须部署 Assembly Buffer（深度 = Pendingtrans，宽度 = W_frag）。Slave Pendingtrans 宜小。</li>
+  <li>有 Atomic 且 Master 位宽 &gt; Slave 时，对齐 single 原子在 Slave 会变成 burst 原子。当前 L2 不支持 Burst Atomic，故有 Atomic 需求的 Master 位宽必须 ≤ Slave。</li>
+  <li>末拍对齐到 Initiator 位宽。Slave 可能看到比 Master 感兴趣范围更大的地址窗。普通读多读无副作用（无 Read-Clear）；普通写靠 STRB 屏蔽；Unify 小转大会把扩展 STRB 清零。</li>
+  <li>Addition（收紧有效区间）暂不实施，由 Master IP 适配。</li>
+  <li>QoS 仅 Switch 消费。响应通道无 QoS 引脚，必须在 TNIU 锁存并带回。不建议把大部分事务打满高优先级；同优先级退化为 RR，全 0 与全 15 无带宽差。</li>
+  <li>Credit 配对：egress CREDIT_INIT 必须等于下游 ingress DEPTH。错配会静默丢拍。PIPE 形态初值需覆盖往返打拍数。</li>
+  <li>内存映射区域必须互不重叠。重叠时 AND-OR 会把 Dest 常量按位或在一起，而非 last-match-wins。</li>
+  <li>数据位宽必须 2^n。lane_pack / gearbox 用移位代替乘除；非 2^n 会算错 STRB 或推断除法器。</li>
+  <li>BCA 深度必须 2^n。RdPtr/Data 是同周期组合路径，延迟必须 &lt; 1 个 clk_r，禁止在该路径插同步器。</li>
+  <li>同域 TNIU 必须打开 EXT_PIPE_RSP_*，否则 Slave 的 rsp valid 会组合穿过查表、fragment、credit_egress。</li>
+  <li>写突发中途不得把 alloc_w_ready 再挡后续 WD 拍（TNIU 用 is_first_beat 保护），否则最后一条表项会卡死突发。</li>
+  <li>Slave 必须原样回传 LID。错误回传会还原错误 SrcID，打断回程路由或 burst-lock。</li>
+</ul>
+
+<h2 id="s5">5. Requirements / Feature Description</h2>
+<h3 id="s51">5.1 Feature List</h3>
+<ul class="tight">
+  <li>自定义 LiteBus 接口；Valid-Ready 端侧；内部 Credit。</li>
+  <li>读/写 INCR burst；Atomic Store / Load / Swap / Compare（<span class="mono">EXT_ATOMIC_EN</span>）。</li>
+  <li>非对齐起始；无 AXI size 字段。窄带由 EXTENDED 在进网前处理。</li>
+  <li>读响应交织（TNIU fragment + 可选 assembly）。</li>
+  <li>四通道分离：RR / WW 保序；RW / WR 不保序（Master 做 address overlap 检查）。</li>
+  <li>Switch：FIX / RR / RR-QoS；XBAR FIFO 缓解 HOL；事务级仲裁 + last burst-lock。</li>
+  <li>Link：PIPE、NODE、BCA、Unify。</li>
+  <li>不同 Master/Slave 位宽经 Unify 统一；CMD / user / qos 按通道独立取网络最大值并零扩展。</li>
+  <li>不支持：同 ID、BASIC 内拆包、广/组播、Addition、NIU 内 AMBA 转换（占位）。</li>
+</ul>
+
+<h3 id="s52">5.2 Interface</h3>
+<table>
+  <thead><tr><th>参数</th><th>范围</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>地址</td><td>8–64 bit</td><td>字节寻址，允许非对齐。</td></tr>
+    <tr><td>len</td><td>1–12 bit</td><td>拍数 − 1。</td></tr>
+    <tr><td>txnid</td><td>1–16 bit</td><td>2^n 对应 MAX Pendingtrans；所有事务类型共用。</td></tr>
+    <tr><td>user</td><td>每通道 0–64</td><td>CMD / RSP_RD / RSP_WR 独立，宽 user 不再撑肥其它 flit。</td></tr>
+    <tr><td>data</td><td>8–1024 bit，2^n</td><td>STRB = DW/8。</td></tr>
+    <tr><td>modifier</td><td>0–7</td><td>仅 REQ_W。</td></tr>
+    <tr><td>qos</td><td>0–4</td><td>0 表示总线无 QoS 字段。</td></tr>
+  </tbody>
+</table>
+
+<h3 id="s53">5.3 Principles（与 RTL 对应）</h3>
+<h4>5.3.1 相位型事务定位标</h4>
+<p>互联本质是“访问一段连续字节区间”。外部保留 Address + Len（无 Size）；入网后变为 Lane + Total_bytes，使任意次位宽转换仍不丢范围。</p>
+<pre class="eq">Lane        = Slice(Address)          // 即 addr 在当前 W 下的字节相位
+Total_bytes = (Len+1) × Wdata_mst/8 − (Address mod Wdata_mst/8)
+有效区间    = [Lane, Lane + Total_bytes − 1]
+
+INIU 实现（避免全宽减法）：
+  beats     = len + 1
+  off       = addr[log2(bytes_per_beat)-1:0]
+  beats_adj = beats - (off != 0)
+  low       = -off          // 即 2^B − offset
+  total     = {beats_adj, low_bytes}     // 低 B 位不向高位借位以外的 ripple</pre>
+<p>Unify 四级规则（<span class="mono">lb_unify_gearbox</span>）：</p>
+<table>
+  <thead><tr><th>规则</th><th>定义</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>R1 落位</td><td>字节 A 恒在 beat[A/W] 的 lane A mod W</td><td>与转换历史、事务起点无关。</td></tr>
+    <tr><td>R2 拍集合</td><td>k ∈ [⌊addr/W⌋, ⌊(addr+tb−1)/W⌋]</td><td>与 [addr, addr+tb) 不相交的拍就地剔除。</td></tr>
+    <tr><td>R3 拍数</td><td>N(W) = 上式差 + 1</td><td>该位宽下理论最少拍。</td></tr>
+    <tr><td>R4 有效性</td><td>lane j 有效 ⇔ addr ≤ k·W+j &lt; addr+tb</td><td>接收端只凭 (addr, tb, k) 重建 mask。</td></tr>
+  </tbody>
+</table>
+<p>示例：外部 Address=0x17、Len=1、4B 数据 → Lane=7、Total_bytes=5。4B→2B 剔除空拍；2B→8B 引入冗余窗，写 STRB 为 0。</p>
+
+<h4>5.3.2 事务级 Switch 仲裁</h4>
+<table>
+  <thead><tr><th></th><th>事务级（采用）</th><th>Flit 级（不采用）</th></tr></thead>
+  <tbody>
+    <tr><td>规则</td><td>出口授权后直到 last 才释放</td><td>每拍可换事务，出口交织</td></tr>
+    <tr><td>重排</td><td>端侧无需 ROB</td><td>端侧常需 ROB</td></tr>
+    <tr><td>翻转</td><td>头拍仲裁、末拍释放</td><td>每拍仲裁</td></tr>
+    <tr><td>HOL</td><td>较重，用 XBAR FIFO 换</td><td>较轻</td></tr>
+  </tbody>
+</table>
+<p>实验：16×16 两级 XBAR、FIFO 深度 8，出口空转可压到约 10%。RTL 把路由译码移到 ingress FIFO 写侧，与仲裁/mux 错开同一拍关键路径。</p>
+
+<h4>5.3.3 读交织 Fragment</h4>
+<p>Slave（如 DDRC）可在同 ID 保序前提下穿插多笔读数据。TNIU 将每拍变为独立 fragment。若 Slave 位宽 &lt; Master，不足一拍的 small fragment 不能直接回 Master，必须在 Assembly Buffer 拼成 FB 后再发。缓冲规格：每 LID 一项、一项只持有一个 FB 而非整笔事务。</p>
+
+<h4>5.3.4 QoS</h4>
+<p>局部 QoS，唯一消费者是 Switch。RR-QoS（ARB_SCHEME=2）在仲裁器前做支配滤波：只有当前最高 pending QoS 的请求者进入 RR。比较值在无 XBAR FIFO 时是头拍 qos；有 FIFO 时是队列内最大值（<span class="mono">lb_sw_qos_track</span> 温度计计数）。Burst-lock 优先于 QoS：锁定突发必须发完。</p>
+
+<h2 id="s6">6. Open Issues</h2>
+<table>
+  <thead><tr><th>No.</th><th>Issue</th><th>状态</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Farbic 准入前信号位宽统一</td><td>principle 1.8 TBD</td><td>RTL 已用 Unify-LINK 实现数据通道转换；CMD 等宽透传。</td></tr>
+    <tr><td>2</td><td>广/组播、规约</td><td>TBD</td><td>opcode 已留位，无 RTL。</td></tr>
+    <tr><td>3</td><td>Addition</td><td>不做</td><td>Master IP 保证感兴趣区间。</td></tr>
+    <tr><td>4</td><td>NIU 内 AXI/APB adaptor</td><td>TODO 占位</td><td>真实桥在 adapter RTL。</td></tr>
+    <tr><td>5</td><td>resp 编码文档不一致</td><td>以 RTL 为准</td><td>见 3.2。</td></tr>
+    <tr><td>6</td><td>QChannel / 低功耗握手</td><td>BASIC 无</td><td>adapter 侧规划，不在 litebus_rtl。</td></tr>
+    <tr><td>7</td><td>Performance / Area 数值</td><td>motivation 3.2/3.3 空表</td><td>仅有 demo 配置与 DC 目标频率描述。</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s7">7. Hardware Implementation</h2>
+<p>RTL 目录（全部 Verilog-2001，<span class="mono">`default_nettype</span> 由各文件自洽；共享 <span class="mono">lb_defines.vh</span>）：</p>
+<table>
+  <thead><tr><th>路径</th><th>模块</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">iniu/</td><td>lb_iniu_ext_core / int_core / *_bca / id_decode / int_pipe</td></tr>
+    <tr><td class="sig">tniu/</td><td>lb_tniu_ext_core / int_core / *_bca / cmd_table / cmd_conv / lane_pack / rsp_rd_frag / adaptor</td></tr>
+    <tr><td class="sig">switch/</td><td>lb_sw_route / crossbar / arbiter / out_fifo / qos_track</td></tr>
+    <tr><td class="sig">credit/</td><td>lb_credit_egress / lb_credit_ingress</td></tr>
+    <tr><td class="sig">link/</td><td>lb_link_top / unify_data / unify_gearbox / req_unify_adapt / rsp_rd_unify_adapt / async_*</td></tr>
+    <tr><td class="sig">bca/</td><td>lb_bca_slv / lb_bca_mst</td></tr>
+    <tr><td class="sig">pipe_vr/</td><td>lb_iniu_pipe（外部 VR skid）</td></tr>
+    <tr><td class="sig">common/</td><td>lb_lsb_onehot / lb_msb_onehot</td></tr>
+  </tbody>
+</table>
+<p>NIU 分成 int_core（网络域）与 ext_core（IP 域）。跨时钟用独立模块 <span class="mono">*_bca</span>，不用参数或 `define 切换——V2001 端口表在 elaboration 固定，且同一 top 可能同时实例化两种形态。</p>
+
+<!-- ========== 7.1 INIU ========== -->
+<h3 id="s71">7.1 INIU</h3>
+<h4 id="s711">7.1.1 I/O</h4>
+<p>网络侧（<span class="mono">lb_iniu_int_core</span>）关键端口：</p>
+<table>
+  <thead><tr><th>信号</th><th>方向</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">o_req_r_flit / o_req_r_valid</td><td>out</td><td>REQ_R CMD flit。</td></tr>
+    <tr><td class="sig">o_req_w_flit / o_req_w_valid</td><td>out</td><td>REQ_W CMD+WD。</td></tr>
+    <tr><td class="sig">o_req_r_credit_ret / o_req_w_credit_ret</td><td>in</td><td>下游归还 credit。</td></tr>
+    <tr><td class="sig">i_rsp_rd_flit / i_rsp_rd_valid</td><td>in</td><td>回程读 flit。</td></tr>
+    <tr><td class="sig">i_rsp_wr_flit / i_rsp_wr_valid</td><td>in</td><td>回程写响应。</td></tr>
+    <tr><td class="sig">i_rsp_*_credit_ret</td><td>out</td><td>INIU ingress pop 归还。</td></tr>
+    <tr><td class="sig">vr_req_* / vr_rsp_*</td><td>与 ext 半部</td><td>Valid-Ready 边界。</td></tr>
+  </tbody>
+</table>
+<p>IP 侧（<span class="mono">lb_iniu_ext_core</span>）在 EXT_PROTOCOL=0 时为打包/解包直通。RSP_RD 解包字段：data、last、resp、ext_txnid、user。</p>
+
+<h4 id="s712">7.1.2 Function</h4>
+<ol>
+  <li>REQ_R 与 REQ_W 两条完全并行链：各自 ext_pipe、id_decode、credit_egress、int_pipe。代价是内存映射比较器翻倍；共享译码再仲裁会把两通道重新绑到同一资源。</li>
+  <li>id_decode：并行区域命中 + 一热 AND-OR（深度 log2(NUM_REGION)），避免线性优先级链。DestID 与 addr_local 同期组合完成，握手直通，无内部缓冲。</li>
+  <li>total_bytes 用“低位取补 + 高位条件减 1”代替全宽减法，缩短 INIU 前向关键路径。</li>
+  <li>INT_* 为网络全局最大宽度；窄 Master 零扩展。INIU 回程不读 src_id/qos，用从 LSB 锚定的偏移切片，字段增宽不破坏解包。</li>
+  <li>无 CMD TABLE、无 outstanding 反压。</li>
+</ol>
+
+<h4 id="s713">7.1.3 Hardware</h4>
+<div class="chain">
+  <span class="n pd">IP VR</span><span class="arr">→</span>
+  <span class="n">ext_core unpack/pack</span><span class="arr">→</span>
+  <span class="n">[optional BCA]</span><span class="arr">→</span>
+  <span class="n pd">ext_pipe skid</span><span class="arr">→</span>
+  <span class="n">id_decode ×2</span><span class="arr">→</span>
+  <span class="n">credit_egress</span><span class="arr">→</span>
+  <span class="n">int_pipe</span><span class="arr">→</span>
+  <span class="n sw">Fabric</span>
+</div>
+<p>回程相反：int_pipe → credit_ingress → ext_pipe → 截 IntID → Master。八个 PIPE 使能位独立（四通道 × EXT/INT）。</p>
+<p>WD 组装：<span class="mono">{w_last, w_strb, w_data, dest=0, src=0}</span>。REQ_W = {dec_cmd_flit, [mod], wd_flit}。写突发每拍一张 flit。</p>
+<p>内存映射注入方式 A：生成器把 REGION_BASE / MASK / DEST 打成 flattened 参数。命中条件 <span class="mono">(addr &amp; MASK)==BASE</span>。</p>
+
+<!-- ========== 7.2 TNIU ========== -->
+<h3 id="s72">7.2 TNIU</h3>
+<h4 id="s721">7.2.1 I/O</h4>
+<table>
+  <thead><tr><th>信号 / 参数</th><th>描述</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">i_req_r_flit / i_req_w_flit</td><td>网络入。对应 credit_ret 回给上游。</td></tr>
+    <tr><td class="sig">o_rsp_rd_flit / o_rsp_wr_flit</td><td>网络出。</td></tr>
+    <tr><td class="sig">EXT_PENDING_TRANS</td><td>CMD TABLE 深度。LID 宽度由它派生，禁止外部覆盖。</td></tr>
+    <tr><td class="sig">EXT_RSP_RD_INTERLEAVE</td><td>1 插入 lb_tniu_rsp_rd_frag。</td></tr>
+    <tr><td class="sig">EXT_ATOMIC_EN</td><td>1 启用双响应原子槽。</td></tr>
+    <tr><td class="sig">WFRAG_DW</td><td>该 Slave 上 Master 最大数据位宽。</td></tr>
+  </tbody>
+</table>
+
+<h4 id="s722">7.2.2 Function</h4>
+<ol>
+  <li><b>CMD TABLE 单池</b>：读口取最低空闲（lsb_onehot），写口取最高空闲（msb_onehot）。≥2 空闲时可同拍双分配；只剩 1 个时寄存器 RR 决定归属。ready 只是 cnt_free 与 rr_ptr 的函数，两通道无组合耦合。容量共享：一方打满表会拉低另一方 ready。</li>
+  <li>alloc_*_req 必须已折入下游 ready，避免占着最后一项却发不出去。</li>
+  <li>写通道仅首拍分配；<span class="mono">ci_req_w_r = (is_first_beat ? alloc_w_ready : 1) &amp;&amp; ep_ready</span>。</li>
+  <li><b>cmd_conv</b>：<span class="mono">len = ceil((addr_lo + total_bytes)/SLV_B) − 1</span>，恒等变形为 <span class="mono">floor((x−1)/B)</span>，一次加法加移位。total_bytes=0 时 len=0。</li>
+  <li><b>lane_pack</b>：数据已相位对齐，不再桶形移位。STRB = 范围掩码 AND 上游 strb。范围比较拆成拍级一次比较 + 每 lane 温度计。</li>
+  <li><b>rsp_rd_frag</b>：beat → fragment。SLV≥W_frag 时每拍即一 fragment，无需 SRAM 式拼拍；SLV&lt;W_frag 时收集 RSPAN 拍。每 LID 一项缓冲。s1 寄存器把查表与区间算术拆拍，曾是 2.5 GHz 关键锥。</li>
+  <li>原子 LOAD/SWAP/COMPARE：opcode bit[3:2]=11 且低两位非 00。STORE（4'hC）只收 B。B 与 R 可同拍到达，释放仲裁保证只释放一次。</li>
+  <li>QoS 在分配时写入 qos_mem，响应查表插入 RSP flit 顶部，供回程 Switch 仲裁。</li>
+</ol>
+
+<h4 id="s723">7.2.3 Hardware</h4>
+<div class="fig-block">
+  <figure class="fig">
+    <div class="mermaid">
+flowchart TB
+  subgraph fwdT [Forward]
+    IPr[int_pipe REQ_R]
+    IPw[int_pipe REQ_W]
+    CIr[credit_ingress R]
+    CIw[credit_ingress W]
+    CT[cmd_table shared pool]
+    CCr[cmd_conv R]
+    CCw[cmd_conv W]
+    LP[lane_pack]
+    EPr[ext_pipe R]
+    EPw[ext_pipe W]
+  end
+  IPr --> CIr --> CT
+  IPw --> CIw --> CT
+  CT --> CCr --> EPr
+  CT --> CCw --> LP --> EPw
+    </div>
+    <figcaption>图 7-2-1 TNIU 前向：共享表、独立时序</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>查表端口为何也要拆开</h4>
+    <p>RSP_RD（多拍）与 RSP_WR（单拍）可能同拍返回。若共用一个 lookup + free 选择器，写响应会抢读响应的 LID，造成突发中途 SrcID 改变，打断回程路由与 burst-lock。故 rsp_rd_lid / rsp_wr_lid 与 free  strobe 成对独立。非原子条目同拍不得指向同一项（断言）；原子条目是唯一合法同项双响应。</p>
+  </div>
+</div>
+<p><span class="mono">lb_tniu_ext_core</span> 即使 PROTOCOL=0 也不是纯连线：它把 REQ_W 拆成 cmd/wd 进 adaptor，再在 Slave 口拼回。写检测不再看 opcode——REQ_W 天生是写。</p>
+<p>LID 深度不必 2^n。超出 EXT_PENDING_TRANS 的编码是空洞，响应路径用显式范围门（PEND_POW2 / g_rng_chk）。</p>
+
+<p><b>rsp_rd_frag 要点</b></p>
+<ul class="tight">
+  <li>FB = max(SLV_bytes, W_frag/8)；RSPAN = FB / SLV_bytes。</li>
+  <li>完成队列深度 = Pendingtrans；指针按 2^QW 自然回绕，存储上取整到 QSLOTS，避免非 2^n 深度下 LID 错配（曾在 depth=64 时拍数对、62 个 LID 错）。</li>
+  <li>同一 LID 在 fragment 未出队时不能再收拍（fdone）。吞吐靠多 LID 轮转，单 LID 受“一项缓冲直到 fragment last 送出”限制。</li>
+  <li>无 ROB：假设 Master 接受带 ID 的交织读返回。</li>
+</ul>
+
+<!-- ========== 7.3 Switch ========== -->
+<h3 id="s73">7.3 Switch</h3>
+<h4 id="s731">7.3.1 I/O</h4>
+<p>模块 <span class="mono">lb_sw_route</span>：每通道一个实例（REQ_R / REQ_W / RSP_RD / RSP_WR），端口等宽。Verilog-2001 用 flattened 1-D bus。</p>
+<table>
+  <thead><tr><th>参数</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">ROUTE_TABLE</td><td>flat [NUM_DEST×OW]，DestID → 出口下标。</td></tr>
+    <tr><td class="sig">CONNECTIVITY_MASK</td><td>[i×NUM_OUT+o]=1 表示存在物理连接。</td></tr>
+    <tr><td class="sig">DEST_LSB</td><td>路由字段在 flit 中的位置。请求用 dest_id，响应用 src_id（放在 flit 顶端对齐）。</td></tr>
+    <tr><td class="sig">HAS_LAST / LAST_POS</td><td>WD / RSP_RD 为 1；CMD / RSP_WR 为 0。</td></tr>
+    <tr><td class="sig">ARB_SCHEME</td><td>0 FIX，1 RR，2 RR-QoS。</td></tr>
+    <tr><td class="sig">CREDIT_DEPTH_VEC / OUT_DEPTH_VEC / EGRESS_CREDIT_VEC</td><td>每端口独立深度，避免短链路为长链路买单。</td></tr>
+    <tr><td class="sig">XBAR_FIFO_DEPTH</td><td>每 crosspoint FIFO。0=旁路（组合）。合法 0 或 2–64 任意整数。</td></tr>
+  </tbody>
+</table>
+
+<h4 id="s732">7.3.2 Function</h4>
+<p>每输入：credit_ingress →（写侧路由译码）→ crossbar → out_fifo → credit_egress。</p>
+<p>无 XBAR FIFO 时，输入 ready 等于“所求出口的 grant”，头 flit 堵住则该输入整队冻结，即使其它出口空闲。测量 bus_16x16：输入阻塞 31% 周期而出口空闲 52%。XBAR FIFO 把 ready 变成“本 crosspoint 有空位”，输入可继续按目的地分流。</p>
+<p>RR 实现为双优先级编码器 + mask（mask 即状态，不是二进制指针），避免循环 adder/%。NUM_REQ=8 时从约 53 级逻辑降到与 FIX 同量级的常数深度。grant_take 只在“仲裁器自己的决定被消费”时前进；burst-lock 期间按拍 fire 不得推进 RR，否则 B 拍突发会跳过 B−1 个请求者（B=2、NUM_IN=4 会饿死偶数口）。</p>
+
+<h4 id="s733">7.3.3 Hardware</h4>
+<div class="fig-block">
+  <figure class="fig">
+    <div class="mermaid">
+flowchart LR
+  IN[in_flit valid]
+  RT[route decode on write]
+  IG[credit_ingress plus routed_oh]
+  XB[crossbar FIFO arb mux]
+  OF[out_fifo]
+  EG[credit_egress]
+  IN --> RT --> IG --> XB --> OF --> EG
+    </div>
+    <figcaption>图 7-3-1 Switch 单通道数据路径</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>Burst-lock 与 QoS</h4>
+    <ul>
+      <li>HAS_LAST=1：出口锁定到获权输入，直到选出的 flit.last=1。锁定期间 grant = req &amp; lock_oh，走未滤波的 req，低 QoS 突发不会被后到的高 QoS 打断（否则死锁/撕裂突发）。</li>
+      <li>RR-QoS：温度计向量按位或得当前最高档；某请求者被支配 iff 合并温度计有它没有的位。全 0 时与纯 RR 位级相同。QOS_W=0 时整臂折叠，与无 QoS 网表一致。</li>
+      <li>qos_track：每个温度计档一个加减计数，push/pop 镜像 FIFO 读写，队列最大值可随 pop 下降。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ========== 7.4 Credit ========== -->
+<h3 id="s74">7.4 Credit</h3>
+<h4 id="s741">7.4.1 I/O</h4>
+<table>
+  <thead><tr><th>模块</th><th>端口</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>lb_credit_egress</td>
+      <td class="sig">in_data/in_valid/in_ready，out_data/out_valid（无 ready），credit_return</td>
+    </tr>
+    <tr>
+      <td>lb_credit_ingress</td>
+      <td class="sig">in_data/in_valid（无 ready），out_data/out_valid/out_ready，credit_return=do_rd</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="s742">7.4.2 Function</h4>
+<p>复位后 egress.credit = CREDIT_INIT。发送 −1，return +1，同拍可抵消。credit=0 则 out_valid=0、in_ready=0。</p>
+<p>ingress 写侧相信 credit 保证非满，<span class="mono">do_wr = in_valid &amp;&amp; !full</span>；若仍收到满写，<b>该拍被丢弃</b>。这是最危险的静默失效，故仿真断言 + 静态脚本 <span class="mono">check_credit_pairing.py</span> 双重约束。</p>
+
+<h4 id="s743">7.4.3 Hardware</h4>
+<p>FIFO 指针带绕回位。DEPTH 为 2^n 时自然 +1；否则在 DEPTH−1 处翻转绕回位。与 <span class="mono">lb_sw_out_fifo</span> 指针方案由 <span class="mono">check_fifo_ptr_parity.py</span> 防漂移。egress 允许“正在发送的那一拍零延迟 return”，此时 credit 仍为满值但 do_send=1，不算 over-return。</p>
+
+<!-- ========== 7.5 Link ========== -->
+<h3 id="s75">7.5 Link</h3>
+<h4 id="s751">7.5.1 I/O</h4>
+<p><span class="mono">lb_link_top</span> 统一 credit 接口：<span class="mono">in_flit/in_valid</span>、<span class="mono">in_credit_ret</span>；<span class="mono">out_flit/out_valid</span>、<span class="mono">out_credit_ret</span>。参数 CREDIT_NODE、ASYNC、IN_PIPE、INGRESS_DEPTH、EGRESS_CREDIT、BCA_DEPTH、SYNC_STAGES。</p>
+
+<h4 id="s752">7.5.2 Function</h4>
+<table>
+  <thead><tr><th>形态</th><th>参数</th><th>行为</th></tr></thead>
+  <tbody>
+    <tr><td>(a) PIPE</td><td>CREDIT_NODE=0</td><td>int_pipe：前向 payload+valid、反向 credit 打拍。无缓冲，一条端到端 credit 环。</td></tr>
+    <tr><td>(b) NODE</td><td>CREDIT_NODE=1, ASYNC=0</td><td>ingress FIFO + egress。两条分段 credit，不跨域。</td></tr>
+    <tr><td>(c) BCA</td><td>CREDIT_NODE=1, ASYNC=1</td><td>(b) + 异步。ingress 在 clk_w，egress 在 clk_r，中间 bca_slv/mst。Credit 不跨域。</td></tr>
+  </tbody>
+</table>
+<p>Unify 不是 lb_link_top 的第四模式，而是独立的 <span class="mono">lb_link_unify_data</span> + 通道 adaptor，同样走 credit_ingress → gearbox → credit_egress。</p>
+
+<h4 id="s753">7.5.3 Hardware</h4>
+<p>REQ Unify adaptor 把 INIU/TNIU 的 {CMD[+MOD], WD} 拆成 gearbox 的 {data, mask=strb, last, sb={cmd,dest,src}, lane=addr 相位, total_bytes}。CMD/qos/mod 对 gearbox 不透明。</p>
+<p>RSP_RD adaptor：HAS_MASK=0，mask 由范围重建。sideband = {src, qos, int_id, resp, user, trans_last}。DOWN 后必须恢复 trans_last 与 last 的蕴含关系。</p>
+
+<!-- ========== 7.6 Gearbox ========== -->
+<h3 id="s76">7.6 Unify Gearbox</h3>
+<h4 id="s761">7.6.1 I/O</h4>
+<p><span class="mono">lb_unify_gearbox</span>：in/out data、mask、sb、lane、total_bytes、last、valid/ready。IN_DATA_W 与 OUT_DATA_W 自动决定 UP 或 DOWN；相等则直通。</p>
+
+<h4 id="s752u">7.6.2 Function</h4>
+<p>拍边界由地址决定，不由事务起点决定。UP（窄→宽）：输入拍 k 进入输出拍的子槽 j = k mod RATIO；首拍 j 可以非 0，低槽填 0 且 mask=0；j=RATIO−1 或 in_last 时 flush。DOWN（宽→窄）：按区间相交发射子拍，<b>不以 mask 是否非零为准</b>（稀疏写全 0 strb 合法，用 mask 会把 last 标错）。</p>
+<p>in_lane 即地址相位；in_total_bytes 为突发常量，每拍重复。</p>
+
+<h4 id="s763">7.6.3 Hardware</h4>
+<pre class="eq">lo = in_lane
+hi = lo + total_bytes
+k_in = (lo >> log2(IN_B)) + beat_n     // 绝对输入拍号
+in_base = k_in << log2(IN_B)            // 替代 lo 对齐后再 + beat*IN_B 的乘加</pre>
+<p>无 function/endfunction。RATIO、移位假设位宽为 2^n，elaboration 检查。</p>
+
+<!-- ========== 7.7 BCA ========== -->
+<h3 id="s77">7.7 BCA</h3>
+<h4 id="s771">7.7.1 I/O</h4>
+<p>跨域仅四根有意义的边界：</p>
+<table>
+  <thead><tr><th>信号</th><th>方向</th><th>CDC?</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">wrcnt_gray</td><td>slv → mst</td><td>是，读侧同步后比空。</td></tr>
+    <tr><td class="sig">rdcnt_gray</td><td>mst → slv</td><td>是，写侧同步后比满。</td></tr>
+    <tr><td class="sig">rdptr</td><td>mst → slv</td><td>否。组合驱动 slv 读 mux。</td></tr>
+    <tr><td class="sig">rdata</td><td>slv → mst</td><td>否。同 clk_r 周期采样。</td></tr>
+  </tbody>
+</table>
+
+<h4 id="s772">7.7.2 Function</h4>
+<p>slv（RxUnit）：clk_w 写寄存器堆、写指针、w_ready=!full。mst（TxUnit）：读指针、empty、读握手。Gray：<span class="mono">g = b ^ (b&gt;&gt;1)</span>。SYNC_STAGES≥2。</p>
+
+<h4 id="s773">7.7.3 Hardware</h4>
+<p>DEPTH 必须 2^n。两半可分别硬化。约束 rdptr→rdata 组合延迟 &lt; 1 clk_r。Credit 分段后 BCA 内部不再走 credit，只搬 Valid-Ready 风格的 FIFO 词。</p>
+
+<!-- ========== 7.8 Pipe ========== -->
+<h3 id="s78">7.8 Pipe</h3>
+<h4 id="s781">7.8.1 I/O</h4>
+<table>
+  <thead><tr><th>模块</th><th>接口</th><th>ENABLE=0</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">lb_iniu_pipe</td><td>VR：in_data/valid/ready，out_*</td><td>纯组合直通</td></tr>
+    <tr><td class="sig">lb_iniu_int_pipe</td><td>credit：in_data/valid，out_credit_return 对称</td><td>直通；STAGES 可 &gt;1</td></tr>
+  </tbody>
+</table>
+
+<h4 id="s782">7.8.2 Function</h4>
+<p>ext_pipe 是满吞吐 skid：主寄存器 + 一拍 skid，下游反压时仍可收一拍，避免气泡。int_pipe 无 ready、无 skid，只增加流水深度；正确性完全依赖 credit 预算覆盖这些寄存器。</p>
+
+<h4 id="s783">7.8.3 Hardware</h4>
+<p>skid：<span class="mono">in_ready = ~skid_v</span>；输出握手时若 skid 有货则灌入主寄存器。int_pipe 用 generate 展开 STAGES 级前向数据/valid 与反向 credit 寄存器。</p>
+
+<!-- ========== 7.9 Common ========== -->
+<h3 id="s79">7.9 Common</h3>
+<p><span class="mono">lb_lsb_onehot</span> / <span class="mono">lb_msb_onehot</span>：前缀网络，输出 one-hot 胜者及 “above” mask。仲裁器与 CMD TABLE 分配器共用，避免手写 for-loop 优先级链。</p>
+
+<h2 id="s8">8. Low Power Design</h2>
+<p>BASIC-CORE 不含 QChannel / 时钟门控握手 IP。低功耗相关设计选择：</p>
+<ul class="tight">
+  <li>事务级仲裁降低每拍仲裁翻转。</li>
+  <li>Credit 单向 valid + 稀疏 credit_return，避免长距离 ready 反打。</li>
+  <li>QOS_W=0、ATOMIC_EN=0、XBAR_FIFO_DEPTH=0、各 PIPE ENABLE=0 时对应逻辑整臂折叠。</li>
+  <li>四通道分离避免读命令在写数据物理通道上空占带宽（从而少翻转无用宽数据总线）。</li>
+</ul>
+<p>电源域隔离、下电阻塞与错误响应属于 adapter / 系统 CRM，见 adapter 设计文档，不在本 RTL。</p>
+
+<h2 id="s9">9. Performance</h2>
+<p>motivation 文档给出的 BASIC-CORE demo（数值表未填，此处只记录配置）：</p>
+<table>
+  <thead><tr><th>项</th><th>配置</th></tr></thead>
+  <tbody>
+    <tr><td>拓扑</td><td>16 Master × 16 Slave，二级 XBAR（类 GP3 XBAR_L1）</td></tr>
+    <tr><td>数据位宽</td><td>512 bit</td></tr>
+    <tr><td>Slave MAX Pendingtrans</td><td>256</td></tr>
+    <tr><td>XBAR FIFO</td><td>8 × 512 bit</td></tr>
+    <tr><td>Credit FIFO</td><td>4 × 512 bit</td></tr>
+    <tr><td>激励</td><td>每 Master 背靠背读写各 5000 笔；Slave 零延迟、读交织；burst=2 拍</td></tr>
+    <tr><td>写带宽窗</td><td>REQ_W 第一拍 → 最后一拍写数据</td></tr>
+    <tr><td>读带宽窗</td><td>RD 第一拍 → 最后一拍读数据</td></tr>
+  </tbody>
+</table>
+<p>理论动机：FlexNoC 两通道 + cacheline 2 拍突发把双向有效带宽上限压在约 2/3；四通道把读写数据放到独立物理通道。长 burst 与 HOL 的权衡由 XBAR FIFO 深度调节，而非改为 Flit 级仲裁。</p>
+
+<h2 id="s10">10. Cost / Area</h2>
+<p>文档记载的综合目标（具体 cell 数未写入 motivation 正文）：</p>
+<ul class="tight">
+  <li>1.8 GHz：REG2REG 无 VIO。</li>
+  <li>2.5 GHz：REG2REG VIO &lt; 10 ps。</li>
+</ul>
+<p>面积敏感点（实现已做的结构选择）：</p>
+<ul class="tight">
+  <li>CMD TABLE 深度 = Pendingtrans，读写共享一池，避免双倍表项。</li>
+  <li>读交织 assembly 按 FB×Pendingtrans，不要按整笔事务深度。</li>
+  <li>RSP_RD 不带 byte_valid。</li>
+  <li>路由译码挪到 FIFO 写侧，只增加 NUM_OUT bit/项，换出仲裁拍的地址 mux。</li>
+  <li>lane_pack 去掉桶形移位，STRB 用拍级比较 + 温度计。</li>
+</ul>
+
+<h2 id="s11">11. DFX</h2>
+<ul class="tight">
+  <li>仿真断言由 <span class="mono">LB_NO_ASSERT</span> 关闭，便于 lint 干净编译。覆盖：区域重叠、credit 满写/超预算、FIFO 指针越界、同 ID 双活、原子未使能却来原子 opcode、trans_last 破坏、user 宽度截断等。</li>
+  <li>静态检查（RTL 注释引用，生成器侧）：credit 配对、FIFO 指针奇偶一致性、同域 PIPE 强制打开。</li>
+  <li>无内建扫描/MBIST 包装；寄存器堆（credit FIFO、XBAR FIFO、cmd_table、frag buffer、BCA regfile）需在芯片 DFT 流程中按普通 RAM/flop 处理。</li>
+  <li>复位：各模块异步断言。跨域必须两侧复位策略与 BCA gray 初值（0）一致，避免虚假 empty/full。</li>
+</ul>
+
+<h2 id="s12">12. Patents</h2>
+<p class="na">本章节待补充。当前仓库未列出专利声明。</p>
+
+<p style="margin-top:2.5rem;color:var(--muted);font-size:0.85rem;">
+  — End of document — &nbsp; LiteBus Internal Design Specification v0.1 &nbsp;|&nbsp;
+  RTL 权威：<span class="mono">litebus_rtl/</span> &nbsp;|&nbsp; 不修改该目录
+</p>
+</main>
+</div>
+</body>
+</html>

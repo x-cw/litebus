@@ -1,0 +1,970 @@
+Author: xucw
+
+
+
+
+
+ADB Design Specification
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Version No. 0.1
+Date: 20/12/2024
+
+
+
+
+
+
+?
+Table of Contents
+Revision History	4
+Terminology	5
+1.	Overview	6
+1.1	Purpose	6
+1.2	Top Diagram	6
+1.3	Workflow	6
+2.	Interfaces	7
+3.	Descriptors	9
+4.	Design Constraints	9
+5.	Requirements/Feature Description	9
+5.1	Feature List	9
+5.2	interface	9
+6.	Open Issues	10
+7.	Hardware Implementation	10
+7.1	AXI4 ADB	10
+7.1.1	I/O	10
+7.1.2	Function Description	13
+7.1.3	Hardware Description	14
+7.2	AXI5 ADB	16
+7.2.1	I/O	16
+7.2.2	Function Description	19
+7.2.3	Hardware Description	20
+7.3	BAS ADB	21
+7.3.1	I/O	21
+7.3.2	Function Description	23
+7.3.3	Hardware Description	23
+7.4	APB3 ADB	25
+7.4.1	I/O	25
+7.4.2	Function Description	26
+7.4.3	Hardware Description	27
+7.5	protocol_quiescent	29
+7.5.1	I/O	29
+7.5.2	Function Description	30
+7.5.3	Hardware Description	30
+7.6	upstrm / dnstrm	32
+7.6.1	I/O	32
+7.6.2	Function Description	32
+7.6.3	Hardware Description	32
+7.7	si_ctrl / mi_ctrl	34
+7.7.1	I/O	34
+7.7.2	Function Description	36
+7.7.3	Hardware Description	36
+7.8	Dummy_adb	38
+7.8.1	I/O	38
+7.8.2	Function Description	38
+7.8.3	Hardware Description	38
+7.9	Power QChannel	41
+7.9.1	I/O	41
+7.9.2	Function Description	41
+7.9.3	Hardware Description	42
+8.	Low Power Design	46
+9.	Performance	46
+10.	Cost/Area	46
+11.	DFX	47
+12.	Patents	47
+
+
+?
+Revision History
+Date	Revision	Author	Description
+2024/10/31	V0.1.	xucw	初始版本
+
+?
+Terminology
+No.	Term	Full Name	Description
+1	ADB	AMBA Domain Bridge	
+
+?
+1.	Overview
+1.1	Purpose
+文档主要被用于DE和DV工程师
+此文档描述了ADB的主要功能：
+1）	在第二章节描述了ADB的接口；
+2）	在第五章介绍了ADB的feature；
+3）	在第七章描述了ADB的RTL实现。
+1.2	Top Diagram
+ADB的Top逻辑结构图如下，主要由两部分组成：adb_slave_domain 和adb_master_domain。ADB可以实现事务流在不同时钟域/复位域/电源域之间的安全传输。根据事务类型划分，目前ADB有多种类型。每种类型的ADB仅支持一种事务协议，分别有： AXI5 ADB，AXI4 ADB，BAS ADB，APB3 ADB。根据使用需求，支持两种可配置的ADB功能，即在ADB处于下电/关时钟/复位状态下，对输入的事务进行阻塞事务传输的功能，和回错误响应功能。
+ 
+图1-2-2 ADB top简图
+
+
+1.3	Workflow
+ADB的工作流如下图所示，
+ 
+图1-3-0 ADB工作流简图
+	所有协议类型的ADB在逻辑上都是由ADB slave domain 和ADB master domain两部分组成。其中。这两部分逻辑分别可以属于不同的时钟域、复位域与电源域（作为不同电源域时应在这两部分之间的信号需要插入lowpower相关cells）。
+ADB工作流包括了两大类：AMBA协议数据流与Qchannel控制流。其中
+（1）	来自上游的AMBA协议数据流与ADB slave相接，而发往下游的事务与ADB master domain相接。上游的数据流会根据Qchannel的状态决定被送到Dummy ADB还是ADB_slave_domain。若去到ADB_slave_domain，数据流会受到ADB的内部状态机控制，是否被允许发往下游；同时数据流可在ADB内部upstrm与dnstrm逻辑模块能够完成跨时钟域传输给下游。若去到Dummy ADB，会回复错误响应。
+（2）	来自外部的Qchannel控制流仅与ADB slave相接，并经过做逻辑后分别输入到Dummy ADB和ADB_slave_domain内部的状态机控制模块si_ctrl。si_ctrl根据Qchannel的请求状态以及来自协议状态检测模块protocol_quiescent的检查结果，控制数据流的传输。同时输入的Qchannel控制流会分别控制Dummy ADB和ADB_slave_domain的上下电状态，并让这两者处于相反的上下电状态。
+
+2.	Interfaces
+此处省略AMBA协议接口（可参考第7章），仅列出所有协议下ADB的通用接口。
+信号	位宽	方向	描述
+时钟与复位信号
+aclks	1	input	ADB slave 全局时钟信号
+aresetns	1	input	ADB slave 全局复位信号
+aclkm	1	input	ADB master全局时钟信号
+aresetnm	1	input	ADB master 全局复位信号
+DFT 信号
+dftrstdisables	1	input	禁用ADB slave 全局复位信号，为1：aresetns复位不起作用；为0：aresetns复位起作用
+dftrstdisablem	1	input	禁用ADB master 全局复位信号，为1：aresetnm复位不起作用；为0：aresetnm复位起作用
+dft_test_mode	1	input	对寄存器的reset进行控制。
+控制信号
+pwrq_permit_deny_sar_i	1	input	ADB的Deny权限信号，为1：表示允许ADB的Qchannel可回deny响应，此时不会打断正在传输的事务；为0，表示 ADB的Qchannel不可回deny响应，且必须回accept响应，此时会打断正在传输的事务。
+低功耗握手（Qchannel）信号
+pwrqreqns_i	1	input	外部发起的下电请求信号，为0：表示请求下电；为1：表示请求上电。
+pwrqacceptns_o	1	output	ADB发出的下电接受信号，
+为0：表示接受下电请求（若pwrq_permit_deny_sar_i为1时，表示监控到无事务传输且已阻塞事务通道，可进行下电；若pwrq_permit_deny_sar_i为0时，表示已阻塞事务通道，可进行下电）。
+为1：表示接受上电请求。
+pwrdenys_o	1	output	ADB发出的下电拒绝信号，为0：表示不拒绝下电请求；为1：表示拒绝下电请求。
+pwrqactives_o	1	output	ADB发起的上电请求信号
+其他信号
+ppu_st_pwron	1	input	外部input的全局上电状态。为1时，表示处于全局上电；为0时，表示全局下电。
+reg_err_rsp_en	1	input	下电/复位/关时钟下，事务访问是否允许回复error respond的使能信号。为1：允许回复error respond；为0：阻塞住事务传输，待上电/解复位/开时钟后可继续传输。
+
+
+3.	Descriptors
+4.	Design Constraints
+?	在未通过QChannel与ADB握手的情况下，单独复位/下电一侧ADB，可能会造成在复位释放后/上电后AMBA数据流出错（内部fifo指针异常造成）。因此，在想要对ADB一侧domain进行复位/下电时，需先与ADB进行QChannel握手。
+?	除了APB3 ADB以外，fifo深度必须至少为：(（SI_SYNC_LEVELS+1）+（MI_SYNC_LEVELS+1）)，否则可能会影响事务的传输性能。
+?	pwrq_permit_deny_sar_i的值不应该在pwrreqn拉低和pwrqacceptn拉低之间改变，否则内部采样到的值可能非预期值。建议在pwrreqn拉低前改变值并确保稳定后到达ADB。
+?	对于BAS ADB，内部是将双向的axi4-stream分别独立看待。不会根据“一个方向是请求，另一个方向是响应”这种有依赖关系的事务进行有无未完成事务的监测。
+?	对于BAS ADB，若事务非单笔方式传输， pwrq_permit_deny_sar_i不建议配为0，否则在有这样的事务在ADB传输时进行上下电可能会导致下游设备收不到完整数据。若事务为单笔方式传输（即last一直为高），则对pwrq_permit_deny_sar_i无限制。
+
+5.	Requirements/Feature Description
+ADB是一个可以隔离不同电源、时钟、复位或电压域组件之间的一个异步桥。ADB可以实现事务流在不同时钟域/复位域/电源域之间的正确传输，且允许外部逻辑（如ppu等电源管理模块）通过QChannel与ADB握手的方式实现安全的下电/关时钟/复位。
+5.1	Feature List
+ADB有以下feature:
+?	支持不同复位/时钟/电源域的管理；
+?	支持AXI5、AXI4、APB3、BAS（Bi-directional AXI4-Stream）协议；
+?	允许配置ADB Qchannel 是否允许deny的权限；
+?	支持配置回复错误响应的功能。
+5.2	interface
+?	支持接口的addr、data、user、id等信号位宽的parameter实例化配置；
+
+
+6.	Open Issues
+
+
+7.	Hardware Implementation
+7.1	AXI4 ADB
+7.1.1	I/O
+此处仅列出除了第2章的通用接口以外的接口。
+Signal name	Width	Direction	Description
+adb slave aw通道
+awvalids	1	input	-
+awreadys	1	output	-
+awusers	USER_WIDTH	input	-
+awids	ID_WIDTH	input	-
+awaddrs	ADDR_WIDTH	input	-
+awregions	4	input	-
+awlens	LEN_WIDTH	input	-
+awsizes	3	input	-
+awbursts	2	input	-
+awlocks	1	input	-
+awcaches	4	input	-
+awprots	3	input	-
+awqoss	4	input	-
+adb slave w通道
+wvalids	1	input	-
+wreadys	1	output	-
+wusers	USER_WIDTH	input	-
+wdatas	DATA_WIDTH	input	-
+wstrbs	DATA_WIDTH/8	input	-
+wlasts	1	input	-
+adb slave b通道
+bvalids	1	output	-
+breadys	1	input	-
+busers	USER_WIDTH	output	-
+bids	ID_WIDTH	output	-
+bresps	2	output	-
+adb slave ar通道
+arvalids	1	input	-
+arreadys	1	output	-
+arusers	USER_WIDTH	input	-
+arids	ID_WIDTH	input	-
+araddrs	ADDR_WIDTH	input	-
+arregions	4	input	-
+arlens	LEN_WIDTH	input	-
+arsizes	3	input	-
+arbursts	2	input	-
+arlocks	1	input	-
+arcaches	4	input	-
+arprots	3	input	-
+arqoss	4	input	-
+adb slave r通道
+rvalids	1	output	-
+rreadys	1	input	-
+rusers	USER_WIDTH	output	-
+rids	ID_WIDTH	output	-
+rdatas	DATA_WIDTH	output	-
+rresps	2	output	-
+rlasts	1	output	-
+adb master aw通道
+awvalidm	1	output	-
+awreadym	1	input	-
+awuserm	USER_WIDTH	output	-
+awidm	ID_WIDTH	output	-
+awaddrm	ADDR_WIDTH	output	-
+awregionm	4	output	-
+awlenm	LEN_WIDTH	output	-
+awsizem	3	output	-
+awburstm	2	output	-
+awlockm	1	output	-
+awcachem	4	output	-
+awprotm	3	output	-
+awqosm	4	output	-
+adb master w通道
+wvalidm	1	output	-
+wreadym	1	input	-
+wuserm	USER_WIDTH	output	-
+wdatam	DATA_WIDTH	output	-
+wstrbm	DATA_WIDTH/8	output	-
+wlastm	1	output	-
+adb master b通道
+bvalidm	1	input	-
+breadym	1	output	-
+buserm	USER_WIDTH	input	-
+bidm	ID_WIDTH	input	-
+brespm	2	input	-
+adb master ar通道
+arvalidm	1	output	-
+arreadym	1	input	-
+aruserm	USER_WIDTH	output	-
+aridm	ID_WIDTH	output	-
+araddrm	ADDR_WIDTH	output	-
+arregionm	4	output	-
+arlenm	LEN_WIDTH	output	-
+arsizem	3	output	-
+arburstm	2	output	-
+arlockm	1	output	-
+arcachem	4	output	-
+arprotm	3	output	-
+arqosm	4	output	-
+adb master r通道
+rvalidm	1	input	-
+rreadym	1	output	-
+ruserm	USER_WIDTH	input	-
+ridm	ID_WIDTH	input	-
+rdatam	DATA_WIDTH	input	-
+rrespm	2	input	-
+rlastm	1	input	-
+axi4 adb bus (slave)
+slvmustacceptreqn_async	1	output	必须接受的下电请求
+slvcandenyreqn_async	1	output	可以拒绝的下电请求
+slvacceptn_async	1	input	ADB master接受下电的响应
+slvdeny_async	1	input	ADB master拒绝下电的响应
+si_to_mi_wakeup_async	1	output	ADB slave给到ADB master的唤醒
+mi_to_si_wakeup_async	1	input	ADB master给到ADB slave的唤醒
+aw_wr_ptr_async	AW_FIFO_DEPTH*	output	awfifo的写指针
+aw_rd_ptr_async	AW_FIFO_DEPTH*	input	awfifo的读指针
+aw_rd_ptr_sync	AW_FIFO_DEPTH*	input	读取awfifo的下一个位置。
+aw_payld _async	USER_WIDTH+ID_WIDTH
++ADDR_WIDTH+29	output	awfifo的数据
+w_wr_ptr_async	W_FIFO_DEPTH*	output	wfifo的写指针
+w_rd_ptr_async	W_FIFO_DEPTH*	input	wfifo的读指针
+w_rd_ptr_sync	W_FIFO_DEPTH*	input	读取wfifo的下一个位置。
+w_payld _async	USER_WIDTH+ID_WIDTH
++DATA_WIDTH/8+1	output	wfifo的数据
+b_wr_ptr_async	B_FIFO_DEPTH*	input	bfifo的写指针
+b_rd_ptr_async	B_FIFO_DEPTH*	output	bfifo的读指针
+b_rd_ptr_sync	B_FIFO_DEPTH*	output	读取bfifo的下一个位置。
+b_payld _async	USER_WIDTH+ID_WIDTH
++2	input	bfifo的数据
+ar_wr_ptr_async	AR_FIFO_DEPTH*	output	arfifo的写指针
+ar_rd_ptr_async	AR_FIFO_DEPTH*	input	arfifo的读指针
+ar_rd_ptr_sync	AR_FIFO_DEPTH*	input	读取arfifo的下一个位置。
+ar_payld _async	USER_WIDTH+ID_WIDTH
++ADDR_WIDTH+29	output	arfifo的数据
+r_wr_ptr_async	R_FIFO_DEPTH*	input	rfifo的写指针
+r_rd_ptr_async	R_FIFO_DEPTH*	output	rfifo的读指针
+r_rd_ptr_sync	R_FIFO_DEPTH*	output	读取rfifo的下一个位置。
+r_payld _async	USER_WIDTH+ID_WIDTH
++DATA_WIDTH+3	input	rfifo的数据
+axi4 adb slave debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[8:4]：每bit分别为aw、w、b、ar、r的fifo空状态。
+bit[13:9]：每bit分别为aw、w、b、ar、r的fifo满状态。
+bit[18:4]：每bit分别为aw、w、b、ar、r的fifo指针错误状态。
+bit[19]：为未完成的aw请求的数量。
+bit[20]：为未发完w数据对应的aw请求数量。
+bit[21]：为未完成的ar请求的数量。
+bit[22]：表示下电后仍有事务访问adb。
+bit[31:23]:保留。
+
+axi4 adb master debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[8:4]：每bit分别为aw、w、b、ar、r的fifo空状态。
+bit[13:9]：每bit分别为aw、w、b、ar、r的fifo满状态。
+bit[18:4]：每bit分别为aw、w、b、ar、r的fifo指针错误状态。
+bit[19]：为未完成的aw请求的数量。
+bit[20]：为未发完w数据对应的aw请求数量。
+bit[21]：为未完成的ar请求的数量。
+bit[31:22]:保留。
+
+*fifo的深度在实例化此模块时确定。
+
+7.1.2	Function Description
+AXI4 ADB可以实现axi4事务流在不同时钟域/复位域/电源域之间的正确传输，且允许外部逻辑（如ppu等电源管理模块）通过QChannel与AXI4 ADB握手的方式实现安全的下电/关时钟/复位。
+支持配置ADB Qchannel 是否允许deny的权限。若配置为允许ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会通过QChannel回复deny响应，则表示本次下电/复位/关时钟请求失败；若配置为禁止ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会接收完下电/复位/关时钟时刻前的所有事务响应，然后阻塞下电/复位/关时钟后的过来的新事务往下游发。
+?	支持配置使能回复错误响应的功能。若不使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，那么事务会被ADB拉住ready，即阻塞请求事务直到完成上电/解复位/开时钟。若使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，此时ADB不会将事务发往下游，且会在响应通道回复错误响应。
+
+7.1.3	Hardware Description
+AXI4 ADB的内部详细硬件电路如下所示：
+ 
+
+图7-1-0 AXI4 ADB主要电路结构图
+?	时钟复位
+AXI4 ADB模块支持对axi4协议的通道进行跨时钟域或复位域，ADB slave domain和ADB master domain分别允许有单独的时钟域和复位域。AXI4 ADB任一侧的内部逻辑复位有两种类型：resetn_force和resetn_unforce。resetn_unforce仅用于复位si_ctrl模块，而其他逻辑由reset_force复位。reset_force作为一个强制复位，当si_ctrl内部的power状态机跳转到REQUEST_RESET或者STOPPED状态时，发起自复位。注意，此处只有在通过QChannel接口与ADB进行下电/复位/关时钟握手成功时，才会发起自复位，从而清除内部的fifo指针。若不进行QChannel接口握手，而直接对 ADB slave或者ADB master任意一侧的复位，且内部指针不处于复位状态（即复位前有过事务传输），则会导致在复位释放后ADB事务传输出错。
+?	deny权限
+deny权限是通过对pwrq_permit_deny_sar_i进行配置实现。为0表示允许deny收到的下电/复位/关时钟请求，为1表示不允许deny收到的下电/复位/关时钟请求。对于原来的ADB代码， ADB内部状态机仅能够在复位下采样端口输入的权限的值。修改RTL后，支持在任意时刻被ADB内部状态机采样。也就是，在连续事务传输的情形下，配置为允许deny，在发起多次下电/复位/关时钟请求可能均会被deny，而后续可以通过配置pwrq_permit_deny_sar_i为0，使ADB在收到下一个下电/复位/关时钟请求后接受此下电/复位/关时钟请求。需要注意pwrq_permit_deny_sar_i的值不应该在pwrreqn拉低和pwrqacceptn拉低之间改变，否则内部采样到的值可能非预期值。建议在pwrreqn拉低前改变值并确保稳定后到达ADB。
+更详细的描述参考7.8章节。
+?	状态控制模块
+ADB的状态机控制位于si_ctrl和mi_ctrl模块。这两个模块分别负责ADB_slave_domain和ADB_master_domain的状态控制。
+si_ctrl主要完成对响应外部QChannel的请求、对事务发起fence操作（即阻塞事务请求继续往下发）、以及下发给（或者接收来自）ADB_master_domain的QChannel请求（或响应）。
+	mi_ctrl与si_ctrl的功能类似，使用另一套状态机完成响应来自ADB_slave_domain的QChannel的请求、和对事务发起fence操作。
+更详细的描述参考7.6章节。
+
+?	事务状态检测模块
+事务状态检测模块protocol_quiescent主要检测当前是否有未完成的事务。ADB_slave_domain和ADB_master_domain均有protocol_quiescent模块。模块会接收一直接收AXI事务，通过内部计数器记录未完成的读写事务请求数量。当模块接收到来自状态控制模块发起fence操作时，会根据读写计数器状态发起对axi相应channel的stall，从而完成阻塞所有下电/复位/关时钟请求到来后的到来的axi事务。
+更详细的描述参考7.5章节。
+
+?	跨时钟域模块
+ADB的跨时钟域传输在upstrm与dnstrm模块完成。内部使用了寄存器搭的fifo缓存跨时钟域数据，其中fifo深度可配置。可根据ADB两侧时钟频率的关系适当选择要实例化的fifo深度。此跨时钟域模块可支持任意不同的时钟频率和时钟相位。
+更详细的描述参考7.6章节。
+
+?	回复错误响应的功能
+为了满足在对ADB下电/复位/关时钟后不阻塞事务继续访问的需求，在ADB_slave处增加一些对下电后事务的处理逻辑，在配置reg_err_rsp_en使能后可使其在下电情况下访问时回复错误响应。
+对于AXI4 ADB模块结构如下图所示，由ADB_slave产生的qacceptn_o以及外部PPU输入的全局下电状态ppu_st_pwron决定事务路由去ADB_slave还是DW_AXI。此出由ADB_slave确保在下电时无事务在发送，而Dummy_ADB用于确保对ADB_slave上电时无事务在发送。其中Dummy_ADB和ADB_slave的上下电状态相反。
+ 
+图7-1-3 ADB error respond电路结构
+更详细的时序描述参考7.9.3.2章节。
+
+
+7.2	AXI5 ADB
+7.2.1	I/O
+此处仅列出除了第2章的通用接口以外的接口。
+Signal name	Width	Direction	Description
+adb slave aw通道
+awvalids	1	input	-
+awreadys	1	output	-
+awusers	USER_WIDTH	input	-
+awids	ID_WIDTH	input	-
+awaddrs	ADDR_WIDTH	input	-
+awregions	4	input	-
+awlens	LEN_WIDTH	input	-
+awsizes	3	input	-
+awbursts	2	input	-
+awlocks	1	input	-
+awcaches	4	input	-
+awprots	3	input	-
+awqoss	4	input	-
+awatops	6	input	-
+adb slave w通道
+wvalids	1	input	-
+wreadys	1	output	-
+wusers	USER_WIDTH	input	-
+wdatas	DATA_WIDTH	input	-
+wstrbs	DATA_WIDTH/8	input	-
+wlasts	1	input	-
+adb slave b通道
+bvalids	1	output	-
+breadys	1	input	-
+busers	USER_WIDTH	output	-
+bids	ID_WIDTH	output	-
+bresps	2	output	-
+adb slave ar通道
+arvalids	1	input	-
+arreadys	1	output	-
+arusers	USER_WIDTH	input	-
+arids	ID_WIDTH	input	-
+araddrs	ADDR_WIDTH	input	-
+arregions	4	input	-
+arlens	LEN_WIDTH	input	-
+arsizes	3	input	-
+arbursts	2	input	-
+arlocks	1	input	-
+arcaches	4	input	-
+arprots	3	input	-
+arqoss	4	input	-
+adb slave r通道
+rvalids	1	output	-
+rreadys	1	input	-
+rusers	USER_WIDTH	output	-
+rids	ID_WIDTH	output	-
+rdatas	DATA_WIDTH	output	-
+rresps	2	output	-
+rlasts	1	output	-
+adb master aw通道
+awvalidm	1	output	-
+awreadym	1	input	-
+awuserm	USER_WIDTH	output	-
+awidm	ID_WIDTH	output	-
+awaddrm	ADDR_WIDTH	output	-
+awregionm	4	output	-
+awlenm	LEN_WIDTH	output	-
+awsizem	3	output	-
+awburstm	2	output	-
+awlockm	1	output	-
+awcachem	4	output	-
+awprotm	3	output	-
+awqosm	4	output	-
+awatopm	6	output	-
+adb master w通道
+wvalidm	1	output	-
+wreadym	1	input	-
+wuserm	USER_WIDTH	output	-
+wdatam	DATA_WIDTH	output	-
+wstrbm	DATA_WIDTH/8	output	-
+wlastm	1	output	-
+adb master b通道
+bvalidm	1	input	-
+breadym	1	output	-
+buserm	USER_WIDTH	input	-
+bidm	ID_WIDTH	input	-
+brespm	2	input	-
+adb master ar通道
+arvalidm	1	output	-
+arreadym	1	input	-
+aruserm	USER_WIDTH	output	-
+aridm	ID_WIDTH	output	-
+araddrm	ADDR_WIDTH	output	-
+arregionm	4	output	-
+arlenm	LEN_WIDTH	output	-
+arsizem	3	output	-
+arburstm	2	output	-
+arlockm	1	output	-
+arcachem	4	output	-
+arprotm	3	output	-
+arqosm	4	output	-
+adb master r通道
+rvalidm	1	input	-
+rreadym	1	output	-
+ruserm	USER_WIDTH	input	-
+ridm	ID_WIDTH	input	-
+rdatam	DATA_WIDTH	input	-
+rrespm	2	input	-
+rlastm	1	input	-
+axi4 adb bus (slave)
+slvmustacceptreqn_async	1	output	必须接受的下电请求
+slvcandenyreqn_async	1	output	可以拒绝的下电请求
+slvacceptn_async	1	input	ADB master接受下电的响应
+slvdeny_async	1	input	ADB master拒绝下电的响应
+si_to_mi_wakeup_async	1	output	ADB slave给到ADB master的唤醒
+mi_to_si_wakeup_async	1	input	ADB master给到ADB slave的唤醒
+aw_wr_ptr_async	AW_FIFO_DEPTH*	output	awfifo的写指针
+aw_rd_ptr_async	AW_FIFO_DEPTH*	input	awfifo的读指针
+aw_rd_ptr_sync	AW_FIFO_DEPTH*	input	读取awfifo的下一个位置。
+aw_payld _async	USER_WIDTH+ID_WIDTH
++ADDR_WIDTH+29+6	output	awfifo的数据
+w_wr_ptr_async	W_FIFO_DEPTH*	output	wfifo的写指针
+w_rd_ptr_async	W_FIFO_DEPTH*	input	wfifo的读指针
+w_rd_ptr_sync	W_FIFO_DEPTH*	input	读取wfifo的下一个位置。
+w_payld _async	USER_WIDTH+ID_WIDTH
++DATA_WIDTH/8+1	output	wfifo的数据
+b_wr_ptr_async	B_FIFO_DEPTH*	input	bfifo的写指针
+b_rd_ptr_async	B_FIFO_DEPTH*	output	bfifo的读指针
+b_rd_ptr_sync	B_FIFO_DEPTH*	output	读取bfifo的下一个位置。
+b_payld _async	USER_WIDTH+ID_WIDTH
++2	input	bfifo的数据
+ar_wr_ptr_async	AR_FIFO_DEPTH*	output	arfifo的写指针
+ar_rd_ptr_async	AR_FIFO_DEPTH*	input	arfifo的读指针
+ar_rd_ptr_sync	AR_FIFO_DEPTH*	input	读取arfifo的下一个位置。
+ar_payld _async	USER_WIDTH+ID_WIDTH
++ADDR_WIDTH+29	output	arfifo的数据
+r_wr_ptr_async	R_FIFO_DEPTH*	input	rfifo的写指针
+r_rd_ptr_async	R_FIFO_DEPTH*	output	rfifo的读指针
+r_rd_ptr_sync	R_FIFO_DEPTH*	output	读取rfifo的下一个位置。
+r_payld _async	USER_WIDTH+ID_WIDTH
++DATA_WIDTH+3	input	rfifo的数据
+axi5 adb slave debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[8:4]：每bit分别为aw、w、b、ar、r的fifo空状态。
+bit[13:9]：每bit分别为aw、w、b、ar、r的fifo满状态。
+bit[18:4]：每bit分别为aw、w、b、ar、r的fifo指针错误状态。
+bit[19]：为未完成的aw请求的数量。
+bit[20]：为未发完w数据对应的aw请求数量。
+bit[21]：为未完成的ar请求的数量。
+bit[22]：表示下电后仍有事务访问adb。
+bit[31:23]:保留。
+
+axi5 adb master debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[8:4]：每bit分别为aw、w、b、ar、r的fifo空状态。
+bit[13:9]：每bit分别为aw、w、b、ar、r的fifo满状态。
+bit[18:4]：每bit分别为aw、w、b、ar、r的fifo指针错误状态。
+bit[19]：为未完成的aw请求的数量。
+bit[20]：为未发完w数据对应的aw请求数量。
+bit[21]：为未完成的ar请求的数量。
+bit[31:22]:保留。
+
+*fifo的深度在实例化此模块时确定。
+
+7.2.2	Function Description
+AXI5 ADB可以实现axi5事务流在不同时钟域/复位域/电源域之间的正确传输，且允许外部逻辑（如ppu等电源管理模块）通过QChannel与AXI5 ADB握手的方式实现安全的下电/关时钟/复位。
+支持配置ADB Qchannel 是否允许deny的权限。若配置为允许ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会通过QChannel回复deny响应，则表示本次下电/复位/关时钟请求失败；若配置为禁止ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会接收完下电/复位/关时钟时刻前的所有事务响应，然后阻塞下电/复位/关时钟后的过来的新事务往下游发。
+?	支持配置使能回复错误响应的功能。若不使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，那么事务会被ADB拉住ready，即阻塞请求事务直到完成上电/解复位/开时钟。若使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，此时ADB不会将事务发往下游，且会在响应通道回复错误响应。
+
+7.2.3	Hardware Description
+AXI5 ADB的内部详细硬件电路如下所示：
+ 
+
+图7-2-0 AXI5 ADB主要电路结构图
+?	时钟复位
+AXI5 ADB的时钟复位电路与AXI4 ADB一致。
+?	deny权限
+AXI5 ADB的deny权限电路与AXI4 ADB一致。
+?	状态控制模块
+AXI5 ADB的状态控制模块与AXI4 ADB一致。
+?	事务状态检测模块
+事务状态检测模块protocol_quiescent主要检测当前是否有未完成的事务。模块会接收一直接收AXI事务，通过内部计数器记录未完成的读写事务请求数量。当模块接收到来自状态控制模块发起fence操作时，会根据读写计数器状态发起对axi相应channel的stall，从而完成阻塞所有下电/复位/关时钟请求到来后的到来的axi事务。
+由于AXI5协议支持atomic操作，在进行AtomicLoad、AtomicSwap和AtomicCompare原子事务的时候，会在AXI5 R通道返回寻址位置的原始数据。因此，对于AXI5协议ADB的protocol_quiescent模块在检测原子事务时（即AWATOP[5]为1时），需要同时监测写响应与读响应通道。在具体实现中，protocol_quiescent模块内部的读事务检测计数器会在出现上述三种原子事务时同样会被激活。
+?	跨时钟域模块
+AXI5 ADB的跨时钟域模块与AXI4 ADB一致。。
+?	回复错误响应的功能
+为了满足在对ADB下电/复位/关时钟后不阻塞事务继续访问的需求，在ADB_slave处增加一些对下电后事务的处理逻辑，在配置reg_err_rsp_en使能后可使其在下电情况下访问时回复错误响应。
+对于AXI5 ADB模块结构如下图所示，整体功能与AXI4 ADB err rsp功能基本一致。不同的是，需要支持AXI5协议的原子操作响应。简单而言，在进行AtomicLoad、AtomicSwap和AtomicCompare原子事务时（即AWATOP[5]为1时），若在配置支持error respond时的下电后访问下，Dummy ADB会在读和写响应通道均回复错误响应。
+ 
+图7-1-3 AXI5 ADB error respond电路结构
+更详细的时序描述参考7.9.3.2章节。
+
+7.3	BAS ADB
+7.3.1	I/O
+此处仅列出除了第2章的通用接口以外的接口。
+Signal name	Width	Direction	Description
+adb slave写通道
+tfwvalids	1	input	-
+tfwreadys	1	output	-
+tfwdatas	DATA_WIDTH	input	-
+tfwkeeps	DATA_WIDTH/8	input	-
+tfwlasts	1	input	-
+adb slave读通道
+tfrvalids	1	output	-
+tfrreadys	1	input	-
+tfrdatas	DATA_WIDTH	output	-
+tfrkeeps	DATA_WIDTH/8	output	-
+tfrlasts	1	output	-
+adb master写通道
+tfwvalidm	1	output	-
+tfwreadym	1	input	-
+tfwdatam	DATA_WIDTH	output	-
+tfwkeepm	DATA_WIDTH/8	output	-
+tfwlastm	1	output	-
+adb master读通道
+tfrvalidm	1	input	-
+tfrreadym	1	output	-
+tfrdatam	DATA_WIDTH	input	-
+tfrkeepm	DATA_WIDTH/8	input	-
+tfrlastm	1	input	-
+bas adb bus (slave)
+slvmustacceptreqn_async	1	output	必须接受的下电请求
+slvcandenyreqn_async	1	output	可以拒绝的下电请求
+slvacceptn_async	1	input	ADB master接受下电的响应
+slvdeny_async	1	input	ADB master拒绝下电的响应
+si_to_mi_wakeup_async	1	output	ADB slave给到ADB master的唤醒
+mi_to_si_wakeup_async	1	input	ADB master给到ADB slave的唤醒
+fw_wr_ptr_async	AW_FIFO_DEPTH*	output	wfifo的写指针
+fw_rd_ptr_async	AW_FIFO_DEPTH*	input	wfifo的读指针
+fw_rd_ptr_sync	AW_FIFO_DEPTH*	input	读取wfifo的下一个位置。
+fw_payld _async	DATA_WIDTH+DATA_WIDTH/8
++ DATA_WIDTH/8+3	output	wfifo的数据
+rv_wr_ptr_async	W_FIFO_DEPTH*	output	rfifo的写指针
+rv_rd_ptr_async	W_FIFO_DEPTH*	input	rfifo的读指针
+rv_rd_ptr_sync	W_FIFO_DEPTH*	input	读取rfifo的下一个位置。
+rv_payld _async	DATA_WIDTH+DATA_WIDTH/8
++ DATA_WIDTH/8+3 	output	rfifo的数据
+bas adb slave debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[5:4]：每bit分别为fw、rv的fifo空状态。
+bit[7:6]：每bit分别为fw、rv的fifo满状态。
+bit[9:8]：每bit分别为fw、rv的fifo指针错误状态。
+bit[31:10]:保留。
+
+bas adb master debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[5:4]：每bit分别为fw、rv的fifo空状态。
+bit[7:6]：每bit分别为fw、rv的fifo满状态。
+bit[9:8]：每bit分别为fw、rv的fifo指针错误状态。
+bit[31:10]:保留。
+
+*fifo的深度在实例化此模块时确定。
+7.3.2	Function Description
+BAS ADB可以实现双向axi4-stream事务流在不同时钟域/复位域/电源域之间的正确传输，且允许外部逻辑（如ppu等电源管理模块）通过QChannel与BAS ADB握手的方式实现安全的下电/关时钟/复位。
+支持配置ADB Qchannel 是否允许deny的权限。若配置为允许ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会通过QChannel回复deny响应，则表示本次下电/复位/关时钟请求失败；若配置为禁止ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会接收完下电/复位/关时钟时刻前的所有事务响应，然后阻塞下电/复位/关时钟后的过来的新事务往下游发。
+	不支持配置使能回复错误响应的功能。
+7.3.3	Hardware Description
+BAS ADB的内部详细硬件电路如下所示：
+ 
+图7-4-0 BAS ADB电路结构图
+?	时钟复位
+BAS ADB模块支持对双向AXI4-Stream协议的通道进行跨时钟域或复位域，ADB slave domain和ADB master domain分别允许有单独的时钟域和复位域。BAS ADB任一侧的内部逻辑复位有两种类型：resetn_force和resetn_unforce。resetn_unforce仅用于复位si_ctrl模块，而其他逻辑由reset_force复位。reset_force作为一个强制复位，当si_ctrl内部的power状态机跳转到REQUEST_RESET或者STOPPED状态时，发起自复位。注意，此处只有在通过QChannel接口与ADB进行下电/复位/关时钟握手成功时，才会发起自复位，从而清除内部的fifo指针。若不进行QChannel接口握手，而直接对 ADB slave或者ADB master任意一侧的复位，且内部指针不处于复位状态（即复位前有过事务传输），则会导致在复位释放后ADB事务传输出错。
+?	deny权限
+deny权限是通过对pwrq_permit_deny_sar_i进行配置实现。为0表示允许deny收到的下电/复位/关时钟请求，为1表示不允许deny收到的下电/复位/关时钟请求。对于原来的ADB代码， ADB内部状态机仅能够在复位下采样端口输入的权限的值。修改RTL后，支持在任意时刻被ADB内部状态机采样。也就是，在连续事务传输的情形下，配置为允许deny，在发起多次下电/复位/关时钟请求可能均会被deny，而后续可以通过配置pwrq_permit_deny_sar_i为0，使ADB在收到下一个下电/复位/关时钟请求后接受此下电/复位/关时钟请求。需要注意pwrq_permit_deny_sar_i的值不应该在pwrreqn拉低和pwrqacceptn拉低之间改变，否则内部采样到的值可能非预期值。建议在pwrreqn拉低前改变值并确保稳定后到达ADB。
+更详细的描述参考7.8章节。
+
+?	状态控制模块
+ADB的状态机控制位于si_ctrl和mi_ctrl模块。这两个模块分别负责ADB_slave_domain和ADB_master_domain的状态控制。
+si_ctrl主要完成对响应外部QChannel的请求、对事务发起fence操作（即阻塞事务请求继续往下发）、以及下发给（或者接收来自）ADB_master_domain的QChannel请求（或响应）。
+	mi_ctrl与si_ctrl的功能类似，使用另一套状态机完成响应来自ADB_slave_domain的QChannel的请求、和对事务发起fence操作。
+更详细的描述参考7.7章节。
+
+?	事务状态检测模块
+事务状态检测模块包含两种类型：initiator_protocol_quiescent和responder_protocol_quiescent。分别用于检测当前是否有未完成的写事务和读事务。ADB_slave_domain和ADB_master_domain均有protocol_quiescent模块。模块会一直接收BAS事务，并监测。当模块接收到来自状态控制模块发起fence操作时，会根据读写计数器状态发起对相应channel的stall，从而完成阻塞所有下电/复位/关时钟请求到来后的到来的事务。
+更详细的描述参考7.5章节。
+
+?	跨时钟域模块
+ADB的跨时钟域传输在upstrm与dnstrm模块完成。内部使用了寄存器搭的fifo缓存跨时钟域数据，其中fifo深度可配置。可根据ADB两侧时钟频率的关系适当选择要实例化的fifo深度。此跨时钟域模块可支持任意不同的时钟频率和时钟相位。
+更详细的描述参考7.6章节。
+
+
+
+7.4	APB3 ADB
+7.4.1	I/O
+此处仅列出除了第2章的通用接口以外的接口。
+Signal name	Width	Direction	Description
+adb slave写通道
+psels	1	input	-
+penables	1	input	-
+pwrites	1	input	-
+paddrs	ADDR_WIDTH	input	-
+pwdatas	DATA_WIDTH	input	-
+pusers	USER_WIDTH	input	-
+preadys	1	output	-
+prdatas	DATA_WIDTH	output	-
+pslverrs	1	output	-
+adb master写通道
+pselm	1	output	-
+penablem	1	output	-
+pwritem	1	output	-
+paddrm	ADDR_WIDTH	output	-
+pwdatam	DATA_WIDTH	output	-
+puserm	USER_WIDTH	output	-
+preadym	1	input	-
+prdatam	DATA_WIDTH	input	-
+pslverrm	1	input	-
+apb adb bus (slave)
+slvmustacceptreqn_async	1	output	必须接受的下电请求
+slvcandenyreqn_async	1	output	可以拒绝的下电请求
+slvacceptn_async	1	input	ADB master接受下电的响应
+slvdeny_async	1	input	ADB master拒绝下电的响应
+si_to_mi_wakeup_async	1	output	ADB slave给到ADB master的唤醒
+mi_to_si_wakeup_async	1	input	ADB master给到ADB slave的唤醒
+fw_wr_ptr_async	AW_FIFO_DEPTH*	output	wfifo的写指针
+fw_rd_ptr_async	AW_FIFO_DEPTH*	input	wfifo的读指针
+fw_rd_ptr_sync	AW_FIFO_DEPTH*	input	读取wfifo的下一个位置。
+fw_payld _async	DATA_WIDTH+ADDR_WIDTH
++ USER_WIDTH+7	output	wfifo的数据
+rv_wr_ptr_async	W_FIFO_DEPTH*	output	rfifo的写指针
+rv_rd_ptr_async	W_FIFO_DEPTH*	input	rfifo的读指针
+rv_rd_ptr_sync	W_FIFO_DEPTH*	input	读取rfifo的下一个位置。
+rv_payld _async	DATA_WIDTH+ 7	output	rfifo的数据
+apb adb slave debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[5:4]：每bit分别为fw、rv的fifo空状态。
+bit[7:6]：每bit分别为fw、rv的fifo满状态。
+bit[9:8]：每bit分别为fw、rv的fifo指针错误状态。
+bit[10]：表示下电后仍有事务访问adb。
+bit[31:11]:保留。
+
+apb adb master debug signals
+adb_debug_monitor	32	output	ADB slave的debug的信号，具体含义：
+bit[3:0]：power ctrl状态机的下一个状态。
+bit[5:4]：每bit分别为fw、rv的fifo空状态。
+bit[7:6]：每bit分别为fw、rv的fifo满状态。
+bit[9:8]：每bit分别为fw、rv的fifo指针错误状态。
+bit[31:10]:保留。
+
+*fifo的深度在实例化此模块时确定
+7.4.2	Function Description
+APB3 ADB可以实现APB3事务流在不同时钟域/复位域/电源域之间的正确传输，且允许外部逻辑（如ppu等电源管理模块）通过QChannel与APB3 ADB握手的方式实现安全的下电/关时钟/复位。
+支持配置ADB Qchannel 是否允许deny的权限。若配置为允许ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会通过QChannel回复deny响应，则表示本次下电/复位/关时钟请求失败；若配置为禁止ADB拒绝下电/复位/关时钟请求时，在ADB有事务的时刻发起下电/复位/关时钟，ADB会接收完下电/复位/关时钟时刻前的所有事务响应，然后阻塞下电/复位/关时钟后的过来的新事务往下游发。
+支持配置使能回复错误响应的功能。若不使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，那么事务会被ADB拉住ready，即阻塞请求事务直到完成上电/解复位/开时钟。若使能此功能，当ADB完成下电/复位/关时钟后，若仍有请求事务发往ADB，此时ADB不会将事务发往下游，且会在响应通道回复错误响应。
+
+7.4.3	Hardware Description
+APB3 ADB的内部详细硬件电路如下所示：
+ 
+图7-4-0 APB3 ADB电路结构图
+APB3 ADB的 电路结构与BAS ADB电路结构基本一样。不一样的地方有两个：一个是增加了APB3与BAS协议转换相关电路；另一个是支持错误响应功能。
+ 
+图7-4-1 APB ADB协议转换电路结构图
+
+?	时钟复位
+APB3 ADB的时钟复位电路与BAS ADB一致。
+?	deny权限
+APB3 ADB的deny权限电路与BAS ADB一致。
+更详细的描述参考7.8章节。
+
+?	状态控制模块
+APB3 ADB的状态控制模块电路与BAS ADB一致。
+更详细的描述参考7.7章节。
+
+?	事务状态检测模块
+APB3 ADB的事务状态检测模块电路与BAS ADB一致。
+更详细的描述参考7.5章节。
+
+?	跨时钟域模块
+APB3 ADB的跨时钟域模块电路与BAS ADB一致。
+更详细的描述参考7.6章节。
+
+?	回复错误响应的功能
+为了满足在对ADB下电/复位/关时钟后不阻塞事务继续访问的需求，在ADB_slave处增加一些对下电后事务的处理逻辑，在配置reg_err_rsp_en使能后可使其在下电情况下访问时回复错误响应。
+ 
+图7-1-3 APB3 ADB error respond电路结构
+更详细的时序描述参考7.9.3.2章节。
+
+
+
+7.5	protocol_quiescent
+7.5.1	I/O
+此处已忽略QVN与DVM相关信号。
+Signal name	Width	Direction	Description
+时钟与复位信号
+aclk	1	input	ADB时钟
+aresetn	1	input	ADB内部的force reset
+事务状态与控制信号
+read_write_quiescent_o	1	output	表示ADB内部有无未完成的读写事务，为1，表示无。
+read_write_quiescent_and_stalled_o	1	output	表示状态机在发起fence请求后ADB内部有无无未完成的读写事务。
+force_read_write_quiescence_n_i	1	input	表示状态机在发起fence请求。为0，表示fence请求有效，即状态机想要强制让ADB进入无事务状态。
+stall_ar_n_o	1	output	发起对ar通道的阻塞
+stall_aw_n_o	1	output	发起对aw通道的阻塞
+stall_w_n_o	1	output	发起对w通道的阻塞
+stall_b_n_o	1	output	发起对b通道的阻塞
+axi 信号
+arvalid_i	1	input	-
+arready_i	1	input	-
+rvalid_i	1	input	-
+rready_i	1	input	-
+rlast_i	1	input	-
+awvalid_i	1	input	-
+awready_i	1	input	-
+awbar_i	1	input	-
+wvalid_i	1	input	-
+wready_i	1	input	-
+wlast_i	1	input	-
+bvalid_i	1	input	-
+bready_i	1	input	-
+
+7.5.2	Function Description
+此模块为事务状态检测模块。主要检测当前是否有未完成的事务。ADB_slave_domain和ADB_master_domain均有protocol_quiescent模块。模块会接收一直接收AXI事务，通过内部计数器记录未完成的读写事务请求数量。当模块接收到来自状态控制模块发起fence请求操作时，会根据读写计数器状态发起对axi相应channel的stall，从而完成阻塞所有下电/复位/关时钟请求到来后的到来的axi事务。
+
+7.5.3	Hardware Description
+protocol_quiescent的内部详细硬件电路（已忽略QVN与DVM相关电路）如下所示：
+ 
+图7-5-0 protocol_quiescent电路结构图
+此模块支持对axi未完成读写请求事务的检测。主要通过内部的三类计数器实现：aw请求与wlast计数器、aw请求与b响应计数器以及ar请求与rlast计数器。当三类计数器均为0时，表示当前无事务在ADB中传输。
+此外，三个计数器另一个作用是可用于判断什么时候进行stall axi事务的各个通道。其中stall aw和w通道是通过aw请求与wlast计数器判断、stall b通道是通过aw请求与b响应计数器判断、以及stall 通道是通过ar请求与rlast计数器判断。aw请求与wlast计数器在w_pending_leading_st中可用于检测aw 请求是pending还是leading 了wlast，从而确认何时发起stall。
+发起stall的情况：
+（1）stall aw通道：若状态控制模块想要发起fence时，且aw 请求是leading wlast或者aw请求与wlast计数器为0时，可直接stall aw通道。
+（2）stall w通道：若状态控制模块想要发起fence时，且aw 请求是pending wlast或者aw请求与wlast计数器为0时，可直接stall w通道。
+（3）stall b通道：若状态控制模块想要发起fence时，aw请求与b响应计数器为0时，stall b通道。
+（4）stall ar通道，只要状态控制模块想要发起fence，便可直接stall ar通道。
+（5）stall r通道：若状态控制模块想要发起fence时，ar请求与r响应计数器为0时，stall r通道。
+
+注意，在axi5协议中，ar请求与rlast计数器在检测到AtomicLoad、AtomicSwap和AtomicCompare原子事务的时候也会累加；若有写atomic请求和读请求同时来，此计数器会累加2。
+
+7.6	upstrm / dnstrm
+7.6.1	I/O
+
+Signal name	Width	Direction	Description
+时钟与复位信号
+aclk	1	input	ADB时钟
+aresetn	1	input	ADB内部的force reset
+src_valid	1	input	payld有效
+src_ready	1	output	可接收payld
+src_payld	WIDTH	input	payld数据
+wr_ptr_async	DEPTH	output	写异步指针
+rd_ptr_async	DEPTH	input	读异步指针
+rd_ptr_sync	DEPTH	input	读同步指针
+payld_async	WIDTH	output	payld数据
+
+7.6.2	Function Description
+此模块为跨时钟域模块。两侧电路支持不同的时钟频率相位与不同的复位。
+7.6.3	Hardware Description
+upstrm与dnstrm的内部详细硬件电路如下所示：
+ 
+图7-6-0 upstrm与dnstrm电路结构图
+为了减少原RTL中payld_async信号数量，此电路结构是基于原RTL的MUX逻辑位置从dnstrm中挪到upstrm修改得到。因此，跨时钟域信号会多出一个读同步指针信号。此外需要特别注意在综合实现阶段的时序约束。
+为了保证在任意时钟频率比例下有最大的吞吐量，fifo深度必须至少为：(（SI_SYNC_LEVELS+1）+（MI_SYNC_LEVELS+1）)。其中*_SYNC_LEVELS为指针同步级数。
+ 
+图7-7-1 upstrm fifo指针示例图
+fifo指针跳动参考图7-7-1，显示了部分的指针状态。图中fifo深度为6，填充蓝色表示有数据在fifo。wr_ptr_async表示写异步指针，指向当前写入的fifo位置；wr_ptr_sync表示写同步指针，其指向下一次会写入的位置；rd_ptr_async_s表示经过输入打拍后的读异步指针，指向当前读出的fifo位置。rd_ptr_async表示读同步指针，指向下一次会读出的fifo位置。
+7.7	si_ctrl / mi_ctrl
+7.7.1	I/O
+此处忽略clk QChannel， DVM相关信号。另外，mi_ctrl与si_ctrl接口信号一样，仅列出si_ctrl模块信号。
+Signal name	Width	Direction	Description
+时钟与复位信号
+aclk	1	input	ADB时钟
+aresetn	1	input	ADB内部的force reset
+pwrq_permit_deny_i	1	input	ADB 的deny权限配置信号
+pwrqreqn_i	1	input	上电请求
+pwrqacceptn_o	1	output	接受上电请求
+pwrqdeny_o	1	output	拒绝上电请求
+pwrqactive_o	1	output	主动向外请求发起上电
+wakeup_i	1	input	来自ADB外部的唤醒信号
+wakeup_o	1	output	状态机控制输出的唤醒信号。
+wakeup_sync_i	1	input	local唤醒信号
+slvmustacceptreqn_o	1	output	slave ADB发起的必须接受的下电请求
+slvcandenyreqn_o	1	output	slave ADB可拒绝的下电请求
+slvacceptn_async_i	1	input	来自master ADB的下电响应
+slvdeny_async	1	input	来自master ADB的拒绝下电响应
+wakeup_async_i	1	input	来自master ADB的唤醒信号
+wakeup_async_o	1	output	给到master ADB的唤醒信号
+initor_quiescent_i	1	input	请求事务的状态
+responder_quiescent_i	1	input	响应事务的状态
+initiator_quiescent_and_stalled_i	1	input	发起fence请求后的事务请求的状态
+responder_quiescent_and_stalled_i	1	input	发起fence请求后的事务响应的状态
+initiator_fencen_o	1	output	对请求事务发起fence请求
+responder_fencen_o	1	output	对响应事务发起fence请求
+inter_fencen_o	1	output	向ADB内部通路发起fence请求
+outer_fencen_o	1	output	向ADB接口输入输出信号发起fence请求。
+internal_resetn_o	1	output	内部自复位
+
+7.7.2	Function Description
+实际ADB内部有四个状态机，其中pwr QChannel控制了两个状态机、 ADB slave domain的clk Qchannel和ADB master domain的clk Qchannel各自控制一个状态机。pwr QChannel可进行时钟/复位/上下电管理，而clk Qchannel只进行时钟开关管理。此外，pwr QChannel在握手成功后会进行自复位，而clk Qchannel则不会。
+由于pwr QChannel可满足需求，因此clk Qchannel不使用。其内部被tie成了上电状态，因此对应的clk状态机在复位释放后会一直处于上电状态。
+根据需求只使用了ADB内部的pwr QChannel控制的两个状态机。无论何种协议的ADB，其内部的pwr QChannel状态控制流程均如下图所示。收到下电请求后状态机会分别查看ADB salve domain和ADB master domain的quiescent状态。
+ 
+图7-7-0 ADB Power QChannel状态控制流程
+7.7.3	Hardware Description
+si_ctrl内部详细的状态机结构如下图所示。
+ 
+图7-7-1 si_ctrl pwr QChannel状态机
+si_ctrl位于ADB slave domain内部，其中的状态机跳转会依赖于外部输入的QChannel请求、来自下游ADB master domain的QChannel响应和protocol_quiescent模块检测结果，进行相应的状态跳转，并且发出对事务的fence请求。
+当状态机处于STOPPED和EXIT时，为下电状态，即输出pwr QChannel的qacceptn会被拉低。其余状态均为上电状态，即qacceptn会被拉高。在状态机处于DENIED状态，qdeny信号会被拉高。
+当状态机处于RUN和DENIED状态以外的状态时，会向protocol_quiescent模块发起initiator_fence请求，即要求强制让ADB进入无事务状态。通常状态机发起这样操作，是主要用在pwrq_permit_deny_i为0，即在不允许deny情况下。也就是在一段连续不断的事务中，若为允许deny情况，那么状态机在跳离RUN状态后会很快又回到deny，因此initiator_fence请求只是短暂有效，并不会起到真正fence ADB中事务传输的作用。而在不允许deny情况下，状态机在跳离RUN状态后，发起的initiator_fence会让protocol_quiescent模块发起对每个事务通道的stall阻塞，并持续阻塞到状态机最终会进入到的STOPPED状态。 在STOPPED状态，状态机会直接对事务发起最终的inner_fence和outer_fence阻塞。
+在REMOTE状态时，状态机会将下电请求传递给下游的ADB master domain的状态机。然后再根据其响应做出相应的跳转。
+在进入到RESET_REMOTE状态时，会等待ADB master domain完成自复位；接着进入到RESET状态时，会发起自身domain的自复位。注意，仅状态机模块不会受到自复位影响。
+
+mi_ctrl内部详细的状态机结构如下图所示。
+ 
+图7-7-2 mi_ctrl pwr QChannel状态机
+	mi_ctrl位于ADB master domain内部。其状态跳转依赖于来自ADB slave domain的状态给出来的QChannel请求，以及来自自身domain的protocol_quiescent模块检测结果。整体的状态跳转情况与si_ctrl状态机类似。
+
+7.8	Dummy_adb
+7.8.1	I/O
+略。
+7.8.2	Function Description
+dummy_adb主要用于，在使能reg_err_rsp_en后，若仍有事务访问，可回复错误响应的功能。由于apb3、axi4与axi5协议的响应方式不一样， dummy_adb也基于协议有三种不同的形态。
+因为事务在adb与dummy_adb之间切需要做到安全的切换，所以在dummy_adb在下电时同样会把事务阻塞。此外adb与dummy_adb之间的上下电状态会是相反的状态。
+7.8.3	Hardware Description
+7.8.3.1	AXI4 dummy adb
+对于axi4 dummy adb其电路结构如图所示：
+ 
+图7-8-1 axi4 dummy adb 电路结构图
+	axi4 dummy adb与axi4 adb有类似的功能，而不同之处在于前者裁剪掉了adb master dmoain部分、跨时钟域电路、以及可以回复错误响应。
+	由于裁剪掉了adb master dmoain部分，因此axi4 dummy adb内部的si_ctrl状态机中等待adb master dmoain响应的相关状态跳转条件会被修改。
+此外，由于需要支持回复错误响应，事务在进到axi4 dummy adb后，会被新增的error respond logic处理。其中这部分逻辑主要是对所有读写请求无条件回复错误响应。如图所示，主要有两部分逻辑，写请求处理逻辑和读请求处理逻辑。这两部分逻辑均不支持outstanding读写请求接收。对于写请求处理逻辑，内部会寄存写请求的id，同时通过lock w逻辑确保aw会比w先来。当收到wlast时，才会发出对应id的b响应（bresp=2‘d3）。在b响应发出去后才允许接受下一个aw请求。对于读请求处理逻辑，内部会寄存读请求的id和len，并且根据len回复相应个数的r响应（rresp=2‘d3和rdata=’d0）。
+7.8.3.2	AXI5 dummy adb
+对于axi5 dummy adb其电路结构如图所示：
+ 
+图7-8-2 axi5 dummy adb 电路结构图
+
+axi5 dummy adb与axi4 dummy adb整体功能类似，不同的地方在于前者需要实现对atomic操作的错误响应。其中的error respond logic逻辑与axi4 dummy adb一样。
+	为了实现对atomic操作的错误响应，在error respond logic逻辑的入口处加入了atomic process logic。此逻辑主要是将AtomicLoad、AtomicSwap或AtomicCompare三种原子事务请求转换成非原子的读写请求。在atomic detect逻辑检测到时atomic事务时，会通过conflict detect进行原子事务与读请求冲突判断。若存在冲突，会把读请求寄存起来。然后根据固定优先级处理冲突，即固定优先把atomic转换出来的读请求往下发（由于回复的错误响应读数据均为0，因此不关心优先级）。另外，在当前atomic的请求未完成，或者有冲突的读请求未完成时，会fence写请求往下发。
+
+7.8.3.3	APB3 dummy adb
+对于apb3 dummy adb其电路结构如图所示：
+ 
+	图7-8-2 apb3 dummy adb 电路结构图
+	apb3 dummy adb与apb3 adb有类似的功能，而不同之处在于前者裁剪掉了adb master dmoain部分、跨时钟域电路、以及可以回复错误响应。
+	其中si_ctrl状态机中等待adb master dmoain响应的相关状态跳转条件同样会被修改。此外，此模块中的apb3的错误响应功能，在事务访问时会断言pslverr。
+
+7.9	Power QChannel
+7.9.1	I/O
+略。
+7.9.2	Function Description
+ADB slave domain拥有一组pwr QChannel， 支持通过握手的方式得知当前有无事务传输，从而得知是否可下电/复位/关时钟。
+下表描述了LPI接口在拉低Qreqn时，ADB会出现的行为。Stall表示会在power状态机进入到STOPPED状态时，即在完全没有任何事务传输的时候，发起阻挡操作（即拉低事务的ready和valid）。此外stall另一个关键的作用在于，有连续事务正在传输时，可以中途暂停往下游发送的事务（同样为拉低事务的ready和valid）。
+	当前状态	QReqn拉低后的行为
+	deny权限	当前有无未完成事务传输	是否发起stall	Qdeny	Qacceptn
+Pwr Qchannel (slave if)	允许	无	是	不变	拉低
+		有	否	拉高	不变
+	禁止	无	是	不变	拉低
+		有	是	不变	拉低
+	
+7.9.3	Hardware Description
+7.9.3.1	ADB LPI接口时序描述
+如下case0（1）和case1（2）的波形图所示（除蓝线以外其余为接口信号），描述了pwr Qchannel的变化导致的ADB内部信号变化的时序图。
+（1）deny权限信号为允许
+Case0是在有事务传输和无事务传输时LPI发起请求的波形。T0时刻复位释放之前，由于power管理状态机处于STOPPED状态，因此会挡住来自上游的事务发送。复位释放之后，power管理状态机会进入RUN状态，会撤掉fence和stall，允许事务进入ADB。在T2时刻，qreqn拉低，PPU想要执行slave domain复位。此时由于有AXI事务在传输，并且有允许deny的权限，Qdeny信号会被拉低，PPU发起的请求失败。想要退出deny状态，必须拉高qreqn。在无AXI事务时，即T8时刻，PPU再次发起请求。请求成功后，在T9时刻发起fence和stall，在T10时刻会返回一个低电平qacceptn。此后PPU便可执行复位操作。
+ 
+图7-9-0 允许deny下的时序图
+（2）deny权限信号为禁止
+Case1是有事务传输时LPI发起请求的波形。注意到pwrq_permit_deny_sar_i为低电平，表示禁止deny。在T2时刻PPU发起复位请求，想要复位ADB master domain。由于禁止了deny，在T3时刻ADB立刻发起AW通道的stall操作，挡住后续A3的传输。在T4时刻，发送完AW对应的WLAST后，发起对W通道的stall操作。在T5时刻，ADB收完对应的B响应之后，发起对B通道的stall操作。在T5时刻发起fence操作，此时ADB进入内部自复位状态。当ADB的power管理状态机进入到STOPPED时，响应PPU的请求，即拉低qacceptn，允许PPU对master domain进行复位。在T8时刻成功复位，并在T9时刻释放。在T10时刻再次发起解复位请求，然后在T11时刻响应完成解复位。T12时刻释放stall和fence，之前未完成的传输，可以继续发送。
+
+ 
+图7-9-1禁止deny下的时序图
+7.9.3.2	ADB_err_rsp LPI接口时序描述
+	下面给出了会回复error respond类型的AXI / APB ADB的QChannel时序图。
+	如下图，黑线为ADB_err_rsp模块外部的LPI接口信号，红线为ADB_err_rsp模块内部的ADB_slave LPI接口，蓝线为ADB_err_rsp模块内部的Dummy_ADB LPI接口。橙线ppu_st_pwron为ADB_err_rsp模块外部的全局上下电状态信号。绿线adb_mux_sel为模块内部的ADB与Dummy_ADB的切换信号。注意到，ADB和Dummy_ADB的上下电状态是相反的。外部发起下电时，会先对Dummy_ADB上电，再对ADB下电。而外部发起上电时，会先对Dummy_ADB下电，再对ADB上电。
+对于切换ADB与Dummy_ADB的时刻，由ppu_st_pwron和pwrqacceptn_o决定，并产生adb_mux_sel信号将事务流发往ADB与Dummy_ADB。
+ 
+图7-9-2 真实axi adb与dummy adb的Qchannel时序图
+	图7-9-3为可会回复error respond类型的APB ADB。与图7-9-2 AXI的ADB的不同的是，ADB和Dummy_ADB切换的时刻不仅取决于ppu_st_pwron和pwrqacceptn_o，也由Dummy_ADB输出的pready_dummy_adb信号决定。
+ 
+图7-9-3 真实apb adb与dummy adb的Qchannel时序图
+
+8.	Low Power Design
+
+9.	Performance
+bridge latency：
+protocol	channel	mean latency
+axi5 / axi4	aw,w,ar	(1x SI_clock_cycle) + (MI_SYNC_LEVEL+1.5) x MI_clock_cycle
+axi5 / axi4	b,r	(1x MI_clock_cycle) + (SI_SYNC_LEVEL+1.5) x SI_clock_cycle
+apb / bas	fw	(1x SI_clock_cycle) + (MI_SYNC_LEVEL+1.5) x MI_clock_cycle
+apb / bas	rv	(1x MI_clock_cycle) + (SI_SYNC_LEVEL+1.5) x SI_clock_cycle
+ 
+10.	Cost/Area
+
+11.	DFX
+ADB slave和master都有一组32bit的adb_debug_monitor。 adb_debug_monitor主要包含：
+?	3组读写counter是否为0（3bit）
+?	fifo空满 (2bit*channel_number)
+?	状态机的下一个状态(4bit)
+?	异常状态（指针不匹配，dummy_adb收到数据）
+
+注意：①dummy_adb收到数据这个异常状态，表示下电后仍有数据发送到了ADB slave端。需要reg_err_rsp配置为1，即启用dummy_adb时此异常状态才有可能触发。此外此异常状态仅在ADB slave端的adb_debug_monitor存在，而ADB master端的adb_debug_monitor无此异常状态。②指针不匹配的异常状态，是指ADB下电状态下，出现读/写指针的不一致。通常是ADB一侧未进行QChannel握手，而直接复位导致。
+
+12.	Patents
+
+
