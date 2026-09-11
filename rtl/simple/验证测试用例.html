@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simple Adapter Verification Test Plan v1.0</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#d7ece8",
+        primaryTextColor: "#14302c",
+        primaryBorderColor: "#2a6b62",
+        lineColor: "#3d5a56",
+        secondaryColor: "#f3ead6",
+        tertiaryColor: "#e8eef2",
+        fontFamily: "Source Han Sans SC, Noto Sans SC, Segoe UI, sans-serif"
+      },
+      flowchart: { curve: "linear", padding: 10, nodeSpacing: 28, rankSpacing: 36 }
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #1a2422;
+      --muted: #5c6b68;
+      --paper: #f7f4ee;
+      --card: #fffefb;
+      --line: #d9d3c7;
+      --accent: #1f6f64;
+      --accent-2: #b45309;
+      --nav: #132422;
+      --chip-axi4: #1d4e89;
+      --chip-axi5: #6b3fa0;
+      --chip-apb: #9a3412;
+      --chip-pwr: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 16px/1.65 "Segoe UI", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    code, .mono {
+      font-family: "Cascadia Code", "Consolas", "Sarasa Mono SC", monospace;
+      font-size: 0.92em;
+    }
+    a { color: var(--accent); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+    nav.toc {
+      background: var(--nav);
+      color: #d7e4e1;
+      padding: 1.2rem 0.85rem 2rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    nav.toc h1 { font-size: 0.92rem; letter-spacing: 0.04em; margin: 0 0 0.2rem; color: #fff; }
+    nav.toc .ver { color: #8fb8b1; font-size: 0.78rem; margin-bottom: 1rem; }
+    nav.toc a {
+      display: block; color: #c5d8d4; text-decoration: none;
+      padding: 0.22rem 0.35rem; border-radius: 4px; font-size: 0.82rem;
+    }
+    nav.toc a:hover, nav.toc a:focus { background: #1e3a36; color: #fff; }
+    nav.toc .sub { padding-left: 0.85rem; font-size: 0.76rem; color: #9bb5b0; }
+    main { max-width: 1040px; padding: 2rem 2.4rem 4rem; }
+    header.hero {
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 1.2rem; margin-bottom: 1.4rem;
+    }
+    header.hero h2 { margin: 0 0 0.35rem; font-size: 1.75rem; }
+    header.hero p { margin: 0.15rem 0; color: var(--muted); }
+    header.hero .meta { font-size: 0.88rem; margin-top: 0.6rem; }
+    h2 { margin-top: 2.3rem; font-size: 1.32rem; scroll-margin-top: 0.5rem; }
+    h3 { margin-top: 1.5rem; font-size: 1.1rem; scroll-margin-top: 0.5rem; }
+    table {
+      border-collapse: collapse; width: 100%;
+      background: var(--card); font-size: 0.88rem; margin: 0.6rem 0 1rem;
+    }
+    th, td {
+      border: 1px solid var(--line); padding: 0.4rem 0.55rem;
+      text-align: left; vertical-align: top;
+    }
+    th { background: #ece7dc; }
+    td.sig { font-family: "Cascadia Code", Consolas, monospace; font-size: 0.84em; white-space: nowrap; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.7rem 0 0.4rem; }
+    .chip {
+      display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
+      color: #fff; font-size: 0.78rem;
+    }
+    .chip.axi4 { background: var(--chip-axi4); }
+    .chip.axi5 { background: var(--chip-axi5); }
+    .chip.apb { background: var(--chip-apb); }
+    .chip.pwr { background: var(--chip-pwr); }
+    .chip.ok { background: #15803d; }
+    .chip.plan { background: #b45309; }
+    .fig-block { margin: 1rem 0 1.8rem; }
+    .fig {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 8px 8px 0 0; padding: 0.8rem 0.6rem 0.4rem; overflow-x: auto; margin: 0;
+    }
+    .fig figcaption { font-size: 0.8rem; color: var(--muted); text-align: center; padding: 0.35rem 0 0.45rem; }
+    .fig-explain {
+      background: #eef4f2; border: 1px solid var(--line); border-top: 0;
+      border-radius: 0 0 8px 8px; padding: 0.85rem 1.05rem 1rem; font-size: 0.92rem;
+    }
+    .fig-explain h4 { margin: 0 0 0.45rem; font-size: 0.88rem; color: var(--accent); }
+    .fig-explain ol, .fig-explain ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+    pre.eq {
+      background: #142422; color: #dbeeea; padding: 0.9rem 1rem;
+      border-radius: 6px; overflow-x: auto; line-height: 1.5;
+    }
+    .note {
+      border-left: 3px solid var(--accent-2);
+      padding: 0.5rem 0.8rem; background: #fbf3e6; margin: 1rem 0;
+    }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      nav.toc { position: relative; height: auto; }
+      main { padding: 1.2rem; }
+    }
+    @media print {
+      nav.toc { display: none; }
+      .layout { display: block; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <h1>Simple Adapter</h1>
+  <div class="ver">Verification Test Plan 1.0</div>
+  <a href="#s1">1. Scope</a>
+  <a href="#s2">2. TB vs RTL</a>
+  <a href="#s3">3. Test cases</a>
+  <a class="sub" href="#u">3.1 Unit</a>
+  <a class="sub" href="#m">3.2 mst AXI</a>
+  <a class="sub" href="#sv">3.3 slv AXI</a>
+  <a class="sub" href="#a">3.4 APB</a>
+  <a class="sub" href="#l">3.5 Loopback</a>
+  <a class="sub" href="#q">3.6 QCH timeout</a>
+  <a href="#s4">4. New vs moved</a>
+  <a href="#s5">5. Planned gaps</a>
+  <a href="#s6">6. Traps</a>
+  <a href="#s7">7. Regression</a>
+</nav>
+<main>
+<header class="hero">
+  <h2>简易适配器验证测试用例</h2>
+  <p>覆盖已搬迁的简易适配器 TB，并按 <code>设计方案.md</code> simple-1.8 增补用例。断言以<strong>当前 RTL</strong>为准。</p>
+  <p class="meta">Author: xucw &nbsp;·&nbsp; Version No. <strong>1.0</strong> &nbsp;·&nbsp; Date: 11/09/2026</p>
+  <p class="meta">原文：<code>验证测试用例.md</code>。设计权威：<code>设计方案.md</code> / <code>设计方案.html</code>。</p>
+  <div class="chips">
+    <span class="chip axi4">AXI4</span>
+    <span class="chip axi5">AXI5</span>
+    <span class="chip apb">APB4</span>
+    <span class="chip pwr">QCH + ADP_QCH_TO</span>
+    <span class="chip ok">已实现</span>
+    <span class="chip plan">计划缺口</span>
+  </div>
+</header>
+
+<h2 id="s1">1. 范围与环境</h2>
+<table>
+  <thead><tr><th>项</th><th>约定</th></tr></thead>
+  <tbody>
+    <tr><td>DUT</td><td><code>rtl/simple/adapter_*.v</code> + <code>adapter_defs.vh</code>（引入 <code>rtl/adapter_ip_defs.vh</code>）</td></tr>
+    <tr><td>模型</td><td><code>rtl/simple/sim/adapter_slv_model.v</code>、<code>axi_slave_mem.v</code>（从仓库 <code>sim/</code> 复制；全功能 TB 仍用原文件）</td></tr>
+    <tr><td>TB 目录</td><td><code>rtl/simple/sim/tb_adapter_simple_*.v</code>（已从仓库根 <code>sim/</code> 搬迁）</td></tr>
+    <tr><td>仿真器</td><td>Icarus Verilog 12，<code>-g2005</code>。路径含空格时拷到无空格目录再编</td></tr>
+    <tr><td>通过判据</td><td>日志含 <code>ALL TESTS PASSED</code></td></tr>
+    <tr><td>宏</td><td>默认<strong>不</strong>定义 <code>ADP_QCH_TO</code>。仅 <code>tb_adapter_simple_qch_to</code> 加 <code>-DADP_QCH_TO</code>，且只编 <code>adapter_qch.v</code></td></tr>
+  </tbody>
+</table>
+<pre class="eq"># 在 rtl/simple 下（无空格路径）
+make TOP=tb_adapter_simple_unit run
+make regress
+make TOP=tb_adapter_simple_qch_to run
+
+iverilog -g2005 -I rtl -I rtl/simple -s tb_adapter_simple_unit -o t.vvp \
+  rtl/simple/adapter_*.v rtl/simple/sim/adapter_slv_model.v \
+  rtl/simple/sim/axi_slave_mem.v rtl/simple/sim/tb_adapter_simple_unit.v</pre>
+<p class="note">LiteBus <code>valid</code>：一拍握手后拉低。APB 只在 SETUP（<code>psel &amp;&amp; !penable</code>）捕获。禁止把 <code>rtl/adapter_*.v</code> 编进本树。</p>
+
+<div class="fig-block">
+  <figure class="fig">
+    <pre class="mermaid">
+flowchart LR
+  TB[TB in rtl/simple/sim]
+  DUT[DUT rtl/simple]
+  M1[adapter_slv_model]
+  M2[axi_slave_mem]
+  TB --> DUT
+  DUT <--> M1
+  DUT <--> M2
+    </pre>
+    <figcaption>图 1 简易适配器验证拓扑</figcaption>
+  </figure>
+  <div class="fig-explain">
+    <h4>说明</h4>
+    <ul>
+      <li>mst TB 用 LiteBus 从模型；slv / loopback 用 AXI 从机内存。</li>
+      <li>超时 TB 只例化 <code>adapter_qch</code>，避免顶层尚未引出超时端口时编译失败。</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="s2">2. TB 与 RTL 对照</h2>
+<table>
+  <thead><tr><th>TB</th><th>DUT</th><th>模型</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">tb_adapter_simple_unit</td><td>qch / atomic / err_rsp / ip_fail</td><td>无</td></tr>
+    <tr><td class="sig">tb_adapter_simple_mst_axi</td><td>mst_axi4 + mst_axi5</td><td>slv_model</td></tr>
+    <tr><td class="sig">tb_adapter_simple_slv_axi</td><td>slv_axi4 + slv_axi5</td><td>axi_slave_mem</td></tr>
+    <tr><td class="sig">tb_adapter_simple_apb</td><td>mst_apb + slv_apb</td><td>slv_model + 简易 APB 从机</td></tr>
+    <tr><td class="sig">tb_adapter_simple_loopback</td><td>mst_axi4 ↔ slv_axi4</td><td>axi_slave_mem</td></tr>
+    <tr><td class="sig">tb_adapter_simple_qch_to</td><td>adapter_qch（ADP_QCH_TO）</td><td>无</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s3">3. 用例表</h2>
+<p>绿色芯片 = 已实现。第 5 章为计划缺口。</p>
+
+<h3 id="u">3.1 单元</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">U-01</td><td>复位后 QCH UP</td><td>7.4.2</td><td><code>qacceptn=1</code>，<code>qactive=0</code></td></tr>
+    <tr><td class="sig">U-02</td><td>空闲 qreqn=0 立即 DOWN</td><td>7.4.2</td><td><code>qacceptn=0</code>，<code>lbus_pwrdn=1</code></td></tr>
+    <tr><td class="sig">U-03</td><td>busy + DENY</td><td>7.4.2</td><td><code>qdeny=1</code> 且保持 UP</td></tr>
+    <tr><td class="sig">U-04</td><td>QUIESCE 再 DOWN</td><td>7.4.2</td><td>busy 清后 DOWN</td></tr>
+    <tr><td class="sig">U-05</td><td>reg_err_en → err_mode</td><td>7.4.2</td><td><code>o_err_mode=1</code></td></tr>
+    <tr><td class="sig">U-06</td><td>qactive</td><td>7.4.1</td><td>busy 或 QUIESCE 为 1</td></tr>
+    <tr><td class="sig">U-07</td><td>AWATOP 四类</td><td>7.5</td><td>opcode C/D/E/F 与 need_r / mod</td></tr>
+    <tr><td class="sig">U-08</td><td>err_rsp 直通</td><td>7.7</td><td>intercept=0 时下游 valid</td></tr>
+    <tr><td class="sig">U-09</td><td>err_rsp 读 FAIL</td><td>7.7</td><td>FAIL + txnid；intercept_on</td></tr>
+    <tr><td class="sig">U-10</td><td>intercept_on 粘滞</td><td>7.7</td><td>拉低 intercept 仍锁到 RSP</td></tr>
+    <tr><td class="sig">U-11</td><td>err_rsp 写 FAIL</td><td>7.7</td><td>不向下游漏 REQ_W</td></tr>
+    <tr><td class="sig">U-12</td><td>ip_fail 读</td><td>7.6</td><td>直通 / FAIL</td></tr>
+    <tr><td class="sig">U-13</td><td>ip_fail 写 FAIL</td><td>7.6</td><td>不向下游漏 REQ_W</td></tr>
+  </tbody>
+</table>
+
+<h3 id="m">3.2 主设备 AXI</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">M-01</td><td>AXI4 单拍写后读</td><td>7.1.2</td><td>B/R OKAY，数据与 ID 一致</td></tr>
+    <tr><td class="sig">M-02</td><td>写 txnid = 写槽 0</td><td>7.1 / 第 2 章</td><td>空表时第一笔写 REQ_W txnid = 0</td></tr>
+    <tr><td class="sig">M-03</td><td>AXI4 两拍 INCR</td><td>7.1.2</td><td>两拍 W/R</td></tr>
+    <tr><td class="sig">M-04</td><td>多 ost 写</td><td>7.1</td><td>不同 ID 重叠</td></tr>
+    <tr><td class="sig">M-05</td><td>多 ost 读</td><td>7.1</td><td>两次 rlast</td></tr>
+    <tr><td class="sig">M-06</td><td>同一 AXI ID 反压</td><td>7.1.2 / §4</td><td>同 ID awready=0</td></tr>
+    <tr><td class="sig">M-07</td><td>ERR_ADDR SLVERR</td><td>7.1.2</td><td>0x4000_0000 → SLVERR</td></tr>
+    <tr><td class="sig">M-08</td><td>QCH 等 ost</td><td>7.4.2 / §8</td><td>B 后才 lbus_pwrdn</td></tr>
+    <tr><td class="sig">M-09</td><td>err_mode 新读 SLVERR</td><td>7.4.2</td><td>在途写仍可完成 W</td></tr>
+    <tr><td class="sig">M-10</td><td>AXI5 STORE</td><td>7.2 / 7.5</td><td>仅 B</td></tr>
+    <tr><td class="sig">M-11</td><td>AXI5 LOAD B+R</td><td>7.2.2</td><td>R 旧值 rid=awid</td></tr>
+    <tr><td class="sig">M-12</td><td>AXI5 SWAP</td><td>7.2.2</td><td>R 旧值，存储新值</td></tr>
+    <tr><td class="sig">M-13</td><td>AXI5 COMPARE 匹配</td><td>7.2.2</td><td>B OKAY（模型无 ATOMIC_FAIL）</td></tr>
+  </tbody>
+</table>
+
+<h3 id="sv">3.3 从设备 AXI</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">S-01</td><td>写后读</td><td>7.1.3</td><td>数据一致</td></tr>
+    <tr><td class="sig">S-02</td><td>多 ost 写</td><td>7.1</td><td>两笔 REQ_W</td></tr>
+    <tr><td class="sig">S-03</td><td>QCH 等 AXI ost</td><td>7.4 / §8</td><td>完成后 DOWN</td></tr>
+    <tr><td class="sig">S-04</td><td>intercept = lbus_pwrdn</td><td>7.1.3 / §8</td><td>DOWN 后相等</td></tr>
+    <tr><td class="sig">S-05</td><td>DOWN 后 REQ_R FAIL</td><td>7.6 / §8</td><td>无 AR</td></tr>
+    <tr><td class="sig">S-06</td><td>ERR_ADDR FAIL</td><td>7.1.2</td><td>RSP_WR=FAIL</td></tr>
+    <tr><td class="sig">S-07</td><td>AXI5 STORE awatop</td><td>7.2.3</td><td>awatop=10100</td></tr>
+  </tbody>
+</table>
+
+<h3 id="a">3.4 APB</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">A-01</td><td>mst 写后读</td><td>7.3.2</td><td>PRDATA 匹配</td></tr>
+    <tr><td class="sig">A-02</td><td>SETUP 两地址</td><td>7.3.2</td><td>0x10 / 0x14 不串数据</td></tr>
+    <tr><td class="sig">A-03</td><td>ERR_ADDR PSLVERR</td><td>7.3.2</td><td>pslverr=1</td></tr>
+    <tr><td class="sig">A-04</td><td>DOWN 无 PREADY</td><td>7.4.2 / §8</td><td>idle+qreqn=0 为 DOWN</td></tr>
+    <tr><td class="sig">A-05</td><td>slv 写后读</td><td>7.3.3</td><td>经 APB RAM 读回</td></tr>
+    <tr><td class="sig">A-06</td><td>slv DOWN FAIL</td><td>7.6 / §8</td><td>无 PSEL</td></tr>
+  </tbody>
+</table>
+
+<h3 id="l">3.5 环回</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">L-01</td><td>单拍写后读</td><td>7.1</td><td>穿过 mst↔slv↔mem</td></tr>
+    <tr><td class="sig">L-02</td><td>两拍 INCR</td><td>7.1.2</td><td>两拍读回</td></tr>
+    <tr><td class="sig">L-03</td><td>多 ost 写</td><td>7.1</td><td>两笔 AW 完成</td></tr>
+  </tbody>
+</table>
+
+<h3 id="q">3.6 QCH 超时（<code>ADP_QCH_TO</code>）</h3>
+<table>
+  <thead><tr><th>ID</th><th>用例</th><th>设计</th><th>期望</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">Q-01</td><td>to_en=0</td><td>7.4.4</td><td>无 irq</td></tr>
+    <tr><td class="sig">Q-02</td><td>lim=0 WAIT</td><td>7.4.4</td><td>下一拍 IRQ；不强制 DOWN；IRQ 在进入 DOWN 的下一拍清除</td></tr>
+    <tr><td class="sig">Q-03</td><td>lim=3 ERR</td><td>7.4.4</td><td>irq + o_to_err；粘滞；busy=0 后 DOWN，下一拍清 IRQ</td></tr>
+    <tr><td class="sig">Q-04</td><td>qreqn=1 清 IRQ</td><td>7.4.4</td><td>回 UP</td></tr>
+    <tr><td class="sig">Q-05</td><td>未到阈值 abort</td><td>7.4.4</td><td>无 IRQ</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s4">4. 相对搬迁前新增</h2>
+<table>
+  <thead><tr><th>来源</th><th>新增 ID</th></tr></thead>
+  <tbody>
+    <tr><td>7.4.4 超时</td><td>Q-01 … Q-05（新 TB）</td></tr>
+    <tr><td>同 ID / txnid</td><td>M-06、M-02（写槽从 0）</td></tr>
+    <tr><td>FAIL 映射</td><td>M-07、S-06、A-03</td></tr>
+    <tr><td>AXI5 B+R</td><td>M-11、M-12、M-13</td></tr>
+    <tr><td>写拦截</td><td>U-11、U-13</td></tr>
+    <tr><td>下电拦截</td><td>S-04、S-05、A-06</td></tr>
+    <tr><td>APB SETUP / 环回两拍</td><td>A-02、L-02</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s5">5. 计划用例（不编进本阶段回归）</h2>
+<p class="note">不要改设计文档去迁就缺口。P-01/P-03/P-04/P-05 已在 1.8 RTL 闭环。</p>
+<table>
+  <thead><tr><th>ID</th><th>缺口</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td class="sig">P-02</td><td>ost 默认 256，TB 例化 4</td><td>TB 一律 MAX_*_OST=4；不扫满 256 表</td></tr>
+    <tr><td class="sig">P-06</td><td>APB err_mode 新 SETUP</td><td>busy 与 IDLE 互斥；现测 A-04</td></tr>
+    <tr><td class="sig">P-07</td><td>slv AXI5 LOAD 的 AXI R</td><td>axi_slave_mem 为 AXI4；mst M-11 已覆盖 LiteBus B+R</td></tr>
+    <tr><td class="sig">P-08</td><td>ATOMIC_FAIL → EXOKAY</td><td>模型比较失败仍回 OK</td></tr>
+    <tr><td class="sig">P-09</td><td>迟到 RSP 丢弃（系统级）</td><td>RTL 已接 axi_done/lbus_done；回归仍以 Q-01…Q-05 测 qch</td></tr>
+    <tr><td class="sig">P-10</td><td>WRAP / 窄带 / SPLIT</td><td>1.8 明确不实现</td></tr>
+  </tbody>
+</table>
+<p>已关闭：P-01 纯 AXI4 顶层；P-03 写 txnid 从 0；P-04 宏下顶层超时端口；P-05 ERR 接 o_to_err。</p>
+
+<h2 id="s6">6. 已知仿真陷阱</h2>
+<ol>
+  <li><strong>QCH err_mode 不得打断已接受的写</strong>（RTL）：M-09 先 AW 再拉低 qreqn。</li>
+  <li><strong>APB idle + qreqn=0 是 DOWN</strong>（TB）：A-04 查 lbus_pwrdn，不得 PREADY。</li>
+  <li><strong>REQ_W 的 CMD</strong>：<code>{CMD,mod,WD}</code>，模型从 MSB 取 CMD。</li>
+</ol>
+
+<h2 id="s7">7. 回归清单</h2>
+<p>本次（2026-09-11，Icarus 12，1.8 RTL）：<strong>6 / 6 PASS</strong>。日志 <code>rpt/tb_adapter_simple_*.log</code>。</p>
+<ul>
+  <li><code>tb_adapter_simple_unit</code></li>
+  <li><code>tb_adapter_simple_mst_axi</code></li>
+  <li><code>tb_adapter_simple_slv_axi</code></li>
+  <li><code>tb_adapter_simple_apb</code></li>
+  <li><code>tb_adapter_simple_loopback</code></li>
+  <li><code>tb_adapter_simple_qch_to</code>（<code>-DADP_QCH_TO</code>）</li>
+</ul>
+<p>未修改 <code>litebus_rtl/</code>。未把 <code>rtl/simple</code> 与 <code>rtl/adapter_*.v</code> 混编。</p>
+</main>
+</div>
+</body>
+</html>

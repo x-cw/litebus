@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simple Adapter Design Specification v1.8</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#d7ece8",
+        primaryTextColor: "#14302c",
+        primaryBorderColor: "#2a6b62",
+        lineColor: "#3d5a56",
+        secondaryColor: "#f3ead6",
+        tertiaryColor: "#e8eef2",
+        fontFamily: "Source Han Sans SC, Noto Sans SC, Segoe UI, sans-serif"
+      },
+      flowchart: { curve: "linear", padding: 10, nodeSpacing: 28, rankSpacing: 36 },
+      sequence: { actorMargin: 28, messageMargin: 32 },
+      state: { padding: 8 }
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #1a2422;
+      --muted: #5c6b68;
+      --paper: #f7f4ee;
+      --card: #fffefb;
+      --line: #d9d3c7;
+      --accent: #1f6f64;
+      --accent-2: #b45309;
+      --nav: #132422;
+      --chip-axi4: #1d4e89;
+      --chip-axi5: #6b3fa0;
+      --chip-apb: #9a3412;
+      --chip-pwr: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 16px/1.65 "Segoe UI", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    code, .mono {
+      font-family: "Cascadia Code", "Consolas", "Sarasa Mono SC", monospace;
+      font-size: 0.92em;
+    }
+    a { color: var(--accent); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+    nav.toc {
+      background: var(--nav);
+      color: #d7e4e1;
+      padding: 1.2rem 0.85rem 2rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    nav.toc h1 {
+      font-size: 0.92rem;
+      letter-spacing: 0.04em;
+      margin: 0 0 0.2rem;
+      color: #fff;
+    }
+    nav.toc .ver { color: #8fb8b1; font-size: 0.78rem; margin-bottom: 1rem; }
+    nav.toc a {
+      display: block;
+      color: #c5d8d4;
+      text-decoration: none;
+      padding: 0.22rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+    nav.toc a:hover, nav.toc a:focus { background: #1e3a36; color: #fff; }
+    nav.toc .sub { padding-left: 0.85rem; font-size: 0.76rem; color: #9bb5b0; }
+    nav.toc .sub2 { padding-left: 1.55rem; font-size: 0.72rem; color: #86a39e; }
+    main { max-width: 1040px; padding: 2rem 2.4rem 4rem; }
+    header.hero {
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 1.2rem;
+      margin-bottom: 1.4rem;
+    }
+    header.hero h2 { margin: 0 0 0.35rem; font-size: 1.75rem; }
+    header.hero p { margin: 0.15rem 0; color: var(--muted); }
+    header.hero .meta { font-size: 0.88rem; margin-top: 0.6rem; }
+    h2 { margin-top: 2.3rem; font-size: 1.32rem; scroll-margin-top: 0.5rem; }
+    h3 { margin-top: 1.5rem; font-size: 1.1rem; scroll-margin-top: 0.5rem; }
+    h4 { margin-top: 1.15rem; font-size: 1rem; scroll-margin-top: 0.5rem; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--card);
+      font-size: 0.88rem;
+      margin: 0.6rem 0 1rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.4rem 0.55rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #ece7dc; }
+    td.sig { font-family: "Cascadia Code", Consolas, monospace; font-size: 0.84em; white-space: nowrap; }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.7rem 0 0.4rem; }
+    .chip {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 0.78rem;
+    }
+    .chip.axi4 { background: var(--chip-axi4); }
+    .chip.axi5 { background: var(--chip-axi5); }
+    .chip.apb { background: var(--chip-apb); }
+    .chip.pwr { background: var(--chip-pwr); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+    .card h3 { margin: 0 0 0.4rem; }
+    .card ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+    .fig-block { margin: 1rem 0 1.8rem; }
+    .fig {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px 8px 0 0;
+      padding: 0.8rem 0.6rem 0.4rem;
+      overflow-x: auto;
+      margin: 0;
+    }
+    .fig figcaption {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.35rem 0 0.45rem;
+    }
+    .fig-explain {
+      background: #eef4f2;
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      padding: 0.85rem 1.05rem 1rem;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+    .fig-explain h4 { margin: 0 0 0.45rem; font-size: 0.88rem; color: var(--accent); }
+    .fig-explain ol, .fig-explain ul { margin: 0.2rem 0 0; padding-left: 1.2rem; }
+    .fig-explain li { margin: 0.2rem 0; }
+    .fig-explain p { margin: 0.35rem 0 0; }
+    .chain {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.28rem;
+      margin: 0.6rem 0 1rem; padding: 0.7rem 0.75rem;
+      background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    }
+    .chain .n {
+      border-radius: 6px; padding: 0.32rem 0.5rem; font-size: 0.75rem; font-weight: 650;
+      border: 1px solid var(--line); background: #fff;
+    }
+    .chain .n.pd { background: #d7ece8; border-color: #2a6b62; }
+    .chain .n.aon { background: #f3ead6; border-color: #b45309; }
+    .chain .arr { color: var(--muted); font-size: 0.85rem; }
+    .legend { font-size: 0.8rem; color: var(--muted); margin: -0.4rem 0 1rem; }
+    .legend i {
+      display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px;
+      margin: 0 0.25rem 0 0.7rem; vertical-align: -1px; border: 1px solid var(--line);
+    }
+    .legend i.pd { background: #d7ece8; }
+    .legend i.aon { background: #f3ead6; }
+    .pack { display: flex; flex-wrap: wrap; gap: 2px; font-size: 0.75rem; margin: 0; }
+    .pack span { padding: 0.45rem 0.55rem; color: #fff; border-radius: 3px; }
+    pre.eq {
+      background: #142422; color: #dbeeea; padding: 0.9rem 1rem;
+      border-radius: 6px; overflow-x: auto; line-height: 1.5;
+    }
+    .note {
+      border-left: 3px solid var(--accent-2);
+      padding: 0.5rem 0.8rem; background: #fbf3e6; margin: 1rem 0;
+    }
+    .na { color: var(--muted); font-style: italic; }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      nav.toc { position: relative; height: auto; }
+      .grid2 { grid-template-columns: 1fr; }
+      main { padding: 1.2rem; }
+    }
+    @media print {
+      nav.toc { display: none; }
+      .layout { display: block; }
+      .fig-block { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <h1>Simple Adapter</h1>
+  <div class="ver">Design Specification 1.8</div>
+  <a href="#rev">Revision History</a>
+  <a href="#term">Terminology</a>
+  <a href="#s1">1. Overview</a>
+  <a class="sub" href="#s11">1.1 Purpose</a>
+  <a class="sub" href="#s12">1.2 Top Diagram</a>
+  <a class="sub" href="#s13">1.3 Workflow</a>
+  <a href="#s2">2. Interfaces</a>
+  <a class="sub" href="#s21">2.1 Parameters</a>
+  <a class="sub" href="#s22">2.2 Signals</a>
+  <a href="#s3">3. Descriptors</a>
+  <a href="#s4">4. Design Constraints</a>
+  <a href="#s5">5. Requirements / Feature</a>
+  <a class="sub" href="#s51">5.1 Feature List</a>
+  <a class="sub" href="#s52">5.2 Interface</a>
+  <a href="#s6">6. Open Issues</a>
+  <a href="#s7">7. Hardware Implementation</a>
+  <a class="sub" href="#s71">7.1 AXI4 Adapter</a>
+  <a class="sub2" href="#s711">7.1.1 I/O</a>
+  <a class="sub2" href="#s712">7.1.2 Function</a>
+  <a class="sub2" href="#s713">7.1.3 Hardware</a>
+  <a class="sub" href="#s72">7.2 AXI5 Adapter</a>
+  <a class="sub2" href="#s721">7.2.1 I/O</a>
+  <a class="sub2" href="#s722">7.2.2 Function</a>
+  <a class="sub2" href="#s723">7.2.3 Hardware</a>
+  <a class="sub" href="#s73">7.3 APB Adapter</a>
+  <a class="sub2" href="#s731">7.3.1 I/O</a>
+  <a class="sub2" href="#s732">7.3.2 Function</a>
+  <a class="sub2" href="#s733">7.3.3 Hardware</a>
+  <a class="sub" href="#s74">7.4 Power Q-Channel</a>
+  <a class="sub2" href="#s741">7.4.1 I/O</a>
+  <a class="sub2" href="#s742">7.4.2 Function</a>
+  <a class="sub2" href="#s743">7.4.3 Hardware</a>
+  <a class="sub2" href="#s744">7.4.4 Timeout feature</a>
+  <a class="sub" href="#s75">7.5 Atomic</a>
+  <a class="sub" href="#s76">7.6 ip_fail</a>
+  <a class="sub" href="#s77">7.7 err_rsp</a>
+  <a href="#s8">8. Low Power Design</a>
+  <a href="#s9">9. Performance</a>
+  <a href="#s10">10. Cost / Area</a>
+  <a href="#s11">11. DFX</a>
+  <a href="#s12">12. Patents</a>
+</nav>
+<main>
+<header class="hero">
+  <h2>Simple Adapter Design Specification</h2>
+  <p>AMBA（AXI4 / AXI5 / APB）↔ LiteBus 裁剪适配器：协议转换 + Q-Channel 上下电。AXI4 与 AXI5 为独立顶层。</p>
+  <p class="meta">Author: xucw &nbsp;·&nbsp; Version No. <strong>1.8</strong> &nbsp;·&nbsp; Date: 11/09/2026</p>
+  <p class="meta">对照 <code>docs/adapter_rtl_design.md</code> v0.9。原文：<code>设计方案.md</code>。</p>
+  <div class="chips">
+    <span class="chip axi4">AXI4 独立顶层</span>
+    <span class="chip axi5">AXI5 AWATOP</span>
+    <span class="chip apb">APB4</span>
+    <span class="chip pwr">QCH + ADP_QCH_TO</span>
+  </div>
+</header>
+
+<section id="rev">
+  <h2>Revision History</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Revision</th><th>Author</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>2026-09-09</td><td>V1.0</td><td>xucw</td><td>AXI4 + QCH + FAIL / err_rsp</td></tr>
+      <tr><td>2026-09-09</td><td>V1.1</td><td>xucw</td><td>AXI5 AWATOP 与 APB 双向；电路/数据流/HTML</td></tr>
+      <tr><td>2026-09-09</td><td>V1.2</td><td>xucw</td><td>系统链路改为 IP Master → … → adapter_err → … → IP Slave；图下说明</td></tr>
+      <tr><td>2026-09-09</td><td>V1.3</td><td>xucw</td><td>HTML 按规格书目录重排并填充 I/O、约束、实现、低功耗等章节</td></tr>
+      <tr><td>2026-09-10</td><td>V1.4</td><td>xucw</td><td>rtl/simple 文件与模块名去掉 simple 前缀（与全功能树同名、分目录，不可混编）</td></tr>
+      <tr><td>2026-09-10</td><td>V1.5</td><td>xucw</td><td>Markdown 与 HTML 目录对齐；文件表、编译、AXI 读时序双向同步</td></tr>
+      <tr><td>2026-09-10</td><td>V1.6</td><td>xucw</td><td>slv lbus_pwrdn 接到从域对侧 bca_slv 清指针；AXI 多 outstanding；QCH 等 AXI 在途完成后再 DOWN</td></tr>
+      <tr><td>2026-09-10</td><td>V1.7</td><td>xucw</td><td>QCH 握手超时上报 irq_qch_to；outstanding 由例化参数设定；各接口章附 parameter 表</td></tr>
+      <tr><td>2026-09-11</td><td>V1.8</td><td>xucw</td><td>AXI4 与 AXI5 顶层解耦；去掉对照性描述；ost 默认 256；超时改为接口+宏；WAIT/ERR 双模式；加长附图说明</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="term">
+  <h2>Terminology</h2>
+  <table>
+    <thead><tr><th>No.</th><th>Term</th><th>Full Name</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>adapter_mst</td><td>Master-side adapter</td><td>AMBA slave → LiteBus INIU 侧（<code>adapter_mst_*</code>）</td></tr>
+      <tr><td>2</td><td>adapter_slv</td><td>Slave-side adapter</td><td>LiteBus TNIU 侧 → AMBA master（<code>adapter_slv_*</code>）</td></tr>
+      <tr><td>3</td><td>BCA</td><td>Bus Converter Async</td><td>成对：<code>bca_slv</code>（可下电写侧）+ <code>bca_mst</code>（常上电读侧）</td></tr>
+      <tr><td>4</td><td>INIU / TNIU</td><td>Initiator / Target NIU</td><td>适配器只对接 IP 侧 REQ/RSP</td></tr>
+      <tr><td>5</td><td>QCH</td><td>Q-Channel</td><td><code>qreqn/qacceptn/qdeny/qactive</code></td></tr>
+      <tr><td>6</td><td>lbus_pwrdn</td><td>LiteBus power-down</td><td><code>st==DOWN</code>（须先等 AXI/APB 在途为 0）。mst → 主域对侧 <code>bca_mst</code> 清指针；slv → 从域对侧 <code>bca_slv</code> 清指针，并派生 <code>intercept</code></td></tr>
+      <tr><td>7</td><td>adapter_err</td><td>Error response guard</td><td>RTL <code>adapter_err_rsp</code>。常上电，LiteBus 与从域 <code>bca_slv</code> 之间（D23）</td></tr>
+      <tr><td>8</td><td>ip_fail</td><td>In-domain FAIL mux</td><td>从域仍有电时回 FAIL；断电后由 adapter_err 兜底</td></tr>
+      <tr><td>9</td><td>CMD / WD / REQ_W</td><td>LiteBus packing</td><td>见第 3 章</td></tr>
+      <tr><td>10</td><td>AWATOP</td><td>AXI5 Atomic operations</td><td>仅 AXI5。5-bit；[1:0]→opcode，[4:2]→mod</td></tr>
+      <tr><td>11</td><td><code>ADP_QCH_TO</code></td><td>QCH timeout compile switch</td><td>宏。未定义则超时逻辑与端口均为 0 面积</td></tr>
+      <tr><td>12</td><td>qch_to_en</td><td>Timeout enable</td><td>接口。1=允许 QUIESCE 计数</td></tr>
+      <tr><td>13</td><td>qch_to_lim</td><td>Timeout limit</td><td>接口，宽 <code>QCH_TO_W</code>（默认 16）</td></tr>
+      <tr><td>14</td><td>qch_to_mode</td><td>Timeout action</td><td>0=WAIT；1=ERR</td></tr>
+      <tr><td>15</td><td>irq_qch_to</td><td>Timeout IRQ</td><td>QUIESCE 超时置位；电平、粘滞</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s1">
+  <h2>1. Overview</h2>
+
+  <h3 id="s11">1.1 Purpose</h3>
+  <p>本文档供 DE / DV 使用。描述 simple 适配器（并行裁剪树 <code>rtl/simple/</code>）的功能与 RTL，不修改 <code>litebus_rtl/</code>，不替换全功能 <code>rtl/adapter_*.v</code>。模块名与全功能树相同，<strong>只编本目录，不可混编</strong>。AXI4 顶层不含任何 AXI5 端口或参数。</p>
+  <ul>
+    <li><strong>第 2 章</strong>：各协议共用接口（时钟复位、Q-Channel、LiteBus REQ/RSP）。</li>
+    <li><strong>第 3 章</strong>：LiteBus 描述符打包（CMD / WD / REQ_W）。</li>
+    <li><strong>第 4–5 章</strong>：约束与 feature。</li>
+    <li><strong>第 7 章</strong>：按 AXI4 / AXI5 / APB 以及 QCH、atomic、ip_fail、err_rsp 给出 I/O、功能与电路。</li>
+  </ul>
+  <p>本 IP 做 <strong>协议转换</strong>；跨时钟/电源异步由链路 <strong>BCA</strong> 完成。</p>
+  <table>
+    <thead><tr><th>文件</th><th>模块</th><th>电路角色</th></tr></thead>
+    <tbody>
+      <tr><td><code>adapter_defs.vh</code></td><td>—</td><td>引入 <code>rtl/adapter_ip_defs.vh</code>；可选 <code>`define ADP_QCH_TO</code></td></tr>
+      <tr><td><code>adapter_qch.v</code></td><td><code>adapter_qch</code></td><td>4 态 Q-Channel + lbus_pwrdn；超时由 <code>ADP_QCH_TO</code> 隔离</td></tr>
+      <tr><td><code>adapter_atomic.v</code></td><td><code>adapter_atomic</code></td><td><strong>仅 AXI5</strong> 例化。AWATOP 组合译码</td></tr>
+      <tr><td><code>adapter_ip_fail.v</code></td><td><code>adapter_ip_fail</code></td><td>同域 FAIL 多路</td></tr>
+      <tr><td><code>adapter_err_rsp.v</code></td><td><code>adapter_err_rsp</code></td><td>常上电 2FF 同步 + 自锁 FAIL</td></tr>
+      <tr><td><code>adapter_mst_axi4.v</code></td><td><code>adapter_mst_axi4</code></td><td><strong>纯 AXI4</strong> slave → LiteBus。无 awatop / 原子 / AXI5_EN</td></tr>
+      <tr><td><code>adapter_slv_axi4.v</code></td><td><code>adapter_slv_axi4</code></td><td><strong>纯 AXI4</strong> LiteBus → AXI master</td></tr>
+      <tr><td><code>adapter_mst_axi5.v</code></td><td><code>adapter_mst_axi5</code></td><td><strong>独立 AXI5</strong> 顶层，不复用 axi4 开关</td></tr>
+      <tr><td><code>adapter_slv_axi5.v</code></td><td><code>adapter_slv_axi5</code></td><td><strong>独立 AXI5</strong> 顶层</td></tr>
+      <tr><td><code>adapter_mst_axi_core.v</code></td><td><code>adapter_mst_axi_core</code></td><td>内部 datapath（HAS_ATOMIC）。不是对外顶层</td></tr>
+      <tr><td><code>adapter_slv_axi_core.v</code></td><td><code>adapter_slv_axi_core</code></td><td>内部 datapath。axi4/axi5 各自包装</td></tr>
+      <tr><td><code>adapter_mst_apb.v</code></td><td><code>adapter_mst_apb</code></td><td>APB slave FSM + QCH</td></tr>
+      <tr><td><code>adapter_slv_apb.v</code></td><td><code>adapter_slv_apb</code></td><td>LiteBus→APB + QCH + FAIL</td></tr>
+    </tbody>
+  </table>
+  <p class="note">AXI4 与 AXI5 <strong>不得</strong>通过 <code>AXI5_EN</code> 共用同一份 <strong>axi4 顶层</strong>源文件。<code>adapter_*_axi4</code> 端口/参数中不允许出现 <code>awatop</code> / <code>AXI5_EN</code> / <code>ATOMIC_FAIL_RESP</code>。内部可将 datapath 放在 <code>*_axi_core.v</code>（<code>HAS_ATOMIC</code>），但 axi4 顶层不得把该开关暴露给用户，也不得例化 <code>adapter_atomic</code>。</p>
+
+  <h3 id="s12">1.2 Top Diagram</h3>
+  <p>请求方向固定如下。BCA 成对出现：<code>bca_slv</code> 在可下电域，<code>bca_mst</code> 在常上电域。<code>adapter_err</code> 插在 LiteBus 与从域 <code>bca_slv</code> 之间。</p>
+  <div class="chain">
+    <span class="n pd">IP Master</span><span class="arr">→</span>
+    <span class="n pd">adapter_mst</span><span class="arr">→</span>
+    <span class="n pd">bca_slv</span><span class="arr">→</span>
+    <span class="n aon">bca_mst</span><span class="arr">→</span>
+    <span class="n aon">LiteBus</span><span class="arr">→</span>
+    <span class="n aon">adapter_err</span><span class="arr">→</span>
+    <span class="n aon">bca_slv</span><span class="arr">→</span>
+    <span class="n pd">bca_mst</span><span class="arr">→</span>
+    <span class="n pd">adapter_slv</span><span class="arr">→</span>
+    <span class="n pd">IP Slave</span>
+  </div>
+  <p class="legend"><i class="pd"></i>可下电域（IP + 适配器 + 该侧 BCA）<i class="aon"></i>常上电（互联、对侧 BCA、<code>adapter_err</code>）</p>
+
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+flowchart LR
+  subgraph MD["可下电主域"]
+    IPM["IP Master"]
+    AM["adapter_mst"]
+    BS1["bca_slv"]
+    IPM --> AM --> BS1
+  end
+  subgraph AO["常上电"]
+    BM1["bca_mst"]
+    LB["LiteBus"]
+    AE["adapter_err"]
+    BS2["bca_slv"]
+    BM1 --> LB --> AE --> BS2
+  end
+  subgraph SD["可下电从域"]
+    BM2["bca_mst"]
+    AS["adapter_slv"]
+    IPS["IP Slave"]
+    BM2 --> AS --> IPS
+  end
+  BS1 -->|"harden / 异步"| BM1
+  BS2 -->|"harden / 异步"| BM2
+  AS -.->|"lbus_pwrdn / intercept"| AE
+  AS -.->|"lbus_pwrdn"| BS2
+  AM -.->|"lbus_pwrdn"| BM1
+      </pre>
+      <figcaption>图 1-2 · 请求链路与电源域。响应方向相反；adapter_err 上电时透传。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 1-2 说明</h4>
+      <p>本图只画 <strong>请求方向</strong>（Master → Slave）。响应完全相反。子图表示电源域，不是时钟域。</p>
+      <ol>
+        <li><strong>可下电主域</strong>：IP Master、adapter_mst、主域 bca_slv 同电。主机只看见适配器的 AMBA <em>slave</em> 口。适配器打成 REQ_R/REQ_W，并跑本域 QCH。</li>
+        <li><strong>主域 bca_slv</strong>：异步桥写侧。下电前必须完成 QCH，否则对侧指针失配。</li>
+        <li><strong>常上电 bca_mst（主域对侧）</strong>：读出请求送给 LiteBus。mst 的 lbus_pwrdn=1 时清读指针。</li>
+        <li><strong>LiteBus</strong>：本目录不实现，只规定 IP 侧 valid/ready。</li>
+        <li><strong>adapter_err</strong>：必须在进入从域 bca_slv <em>之前</em>（D23）。上电透传；intercept 自锁后回 FAIL，避免写进已下电的从域桥。</li>
+        <li><strong>从域对侧 bca_slv</strong>：常上电。slv 的 lbus_pwrdn 在此清指针。</li>
+        <li><strong>可下电从域</strong>：bca_mst + adapter_slv + IP Slave。适配器把 REQ 展开成 AMBA <em>master</em>。</li>
+        <li><strong>虚线 lbus_pwrdn</strong>：仅 DOWN 后为 1。mst 只打到主域对侧 bca_mst；slv 同时打到从域对侧 bca_slv 和 adapter_err.intercept。</li>
+        <li><strong>配对</strong>：axi4 对 axi4，axi5 对 axi5，apb 对 apb。</li>
+      </ol>
+      <p>响应：<code>IP Slave → adapter_slv → bca_mst → bca_slv → adapter_err → LiteBus → bca_mst → bca_slv → adapter_mst → IP Master</code>。拦截时 RSP 由 adapter_err 本地产生。</p>
+      <table>
+        <thead><tr><th>主域</th><th>从域</th></tr></thead>
+        <tbody>
+          <tr><td><code>adapter_mst_axi4</code></td><td><code>adapter_slv_axi4</code></td></tr>
+          <tr><td><code>adapter_mst_axi5</code></td><td><code>adapter_slv_axi5</code></td></tr>
+          <tr><td><code>adapter_mst_apb</code></td><td><code>adapter_slv_apb</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 id="s13">1.3 Workflow</h3>
+  <p>工作流分两类：<strong>AMBA↔LiteBus 数据流</strong>与 <strong>Q-Channel 控制流</strong>。QCH 的 <code>busy</code> 来自协议侧尚未完成的 AXI/APB 事务。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+flowchart TB
+  subgraph DATA["数据流"]
+    M[IP Master] --> MST[adapter_mst]
+    MST --> B1[bca_slv / bca_mst]
+    B1 --> LB[LiteBus]
+    LB --> ERR[adapter_err]
+    ERR --> B2[bca_slv / bca_mst]
+    B2 --> SLV[adapter_slv]
+    SLV --> S[IP Slave]
+  end
+  subgraph Q["Q-Channel"]
+    PPU[电源控制器] -->|qreqn| MST
+    MST -->|lbus_pwrdn| B1
+    PPU -->|qreqn| SLV
+    SLV -->|lbus_pwrdn| B2
+    SLV -->|intercept| ERR
+  end
+      </pre>
+      <figcaption>图 1-3 · 数据流沿图 1-2 十级链路；QCH 只接各域适配器。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 1-3 说明</h4>
+      <p>上半是数据，下半是电源握手。PPU 不进 LiteBus，只拉各域 <code>qreqn</code>。</p>
+      <ol>
+        <li><strong>一次写</strong>：IP Master 在 mst 上 AW+W → REQ_W → BCA → LiteBus →（上电）err 透传 → slv 访问 IP Slave → B 反向变成 RSP_WR → mst 出 B。读把 AW/W/B 换成 AR/REQ_R/R/RSP_RD。</li>
+        <li><strong>mst 下电</strong>：qreqn=0。无在途则立即 DOWN。有在途则 DENY 或 QUIESCE。打开 <code>ADP_QCH_TO</code> 时 QUIESCE 过久拉 irq_qch_to，再按 qch_to_mode 等待或本地回错（7.4.4）。</li>
+        <li><strong>slv 下电</strong>：不能 DENY。QUIESCE 停接新 REQ，ost 清零后 DOWN。lbus_pwrdn 清从域对侧 bca_slv，并作 intercept。</li>
+        <li><strong>err 必须在从域 BCA 之前</strong>：从域断电后 bca_slv 写口不可用。先写进桥再拦截会丢数据和指针。</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="s2">
+  <h2>2. Interfaces</h2>
+  <p>协议专用 AMBA 口见第 7 章。本章为各顶层<strong>共用</strong>时钟、Q-Channel、LiteBus IP 侧口及其 parameter。</p>
+
+  <h3 id="s21">2.1 Parameters</h3>
+  <p>例化时传入（Verilog <code>parameter</code>，非运行时寄存器）。无 <code>QCH_TO_CYCLES</code>：超时阈值走 <code>qch_to_lim</code>，开关走 <code>qch_to_en</code>。</p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>适用范围</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code></td><td>32</td><td>全部顶层</td><td>地址位宽</td></tr>
+      <tr><td><code>DATA_W</code></td><td>64 / APB 32</td><td>全部顶层</td><td>等于 LiteBus 数据宽</td></tr>
+      <tr><td><code>LEN_W</code></td><td>8</td><td>全部顶层</td><td>AXI / LiteBus len</td></tr>
+      <tr><td><code>ID_W</code></td><td>8 / APB 1</td><td>全部顶层</td><td>AXI ID；LiteBus txnid 位宽</td></tr>
+      <tr><td><code>QOS_PW</code></td><td>1</td><td>全部顶层</td><td>CMD qos</td></tr>
+      <tr><td><code>USER_CMD_PW</code></td><td>1</td><td>全部顶层</td><td>CMD user</td></tr>
+      <tr><td><code>USER_RSP_PW</code></td><td>1</td><td>slv</td><td>RSP user</td></tr>
+      <tr><td><code>MOD_PW</code></td><td>1 / AXI5 为 3</td><td>全部顶层</td><td>REQ_W 中 mod。AXI4/APB 为 dummy，不是 AXI5 功能</td></tr>
+      <tr><td><code>W_BYTES</code></td><td><code>DATA_W/8</code></td><td>全部顶层</td><td>派生</td></tr>
+      <tr><td><code>EXT_CMD_W</code> / <code>EXT_REQ_W</code></td><td>由上式展开</td><td>全部顶层</td><td>CMD / REQ_W 宽度</td></tr>
+      <tr><td><code>MAX_RD_OST</code></td><td>256</td><td>AXI 顶层</td><td>读 outstanding；<strong>例化传入</strong>（APB 无）</td></tr>
+      <tr><td><code>MAX_WR_OST</code></td><td>256</td><td>AXI 顶层</td><td>写 outstanding；<strong>例化传入</strong></td></tr>
+      <tr><td><code>HAS_QDENY</code></td><td>mst 1 / slv 0</td><td>qch / 顶层</td><td>slv 不 DENY</td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code></td><td>超时计数器 / <code>qch_to_lim</code> 位宽</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="s22">2.2 Signals</h3>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig" colspan="4"><strong>时钟与复位</strong></td></tr>
+      <tr><td class="sig">clk</td><td>1</td><td>in</td><td>mst/slv 各自域；err_rsp 用常上电时钟</td></tr>
+      <tr><td class="sig">rst_n</td><td>1</td><td>in</td><td>异步置位、同步释放</td></tr>
+      <tr><td class="sig" colspan="4"><strong>Q-Channel</strong></td></tr>
+      <tr><td class="sig">qreqn</td><td>1</td><td>in</td><td>0：请求下电</td></tr>
+      <tr><td class="sig">qacceptn</td><td>1</td><td>out</td><td>0：已 DOWN</td></tr>
+      <tr><td class="sig">qdeny</td><td>1</td><td>out</td><td>仅 mst 且 HAS_QDENY=1</td></tr>
+      <tr><td class="sig">qactive</td><td>1</td><td>out</td><td>busy 或 QUIESCE</td></tr>
+      <tr><td class="sig">reg_qdeny_en</td><td>1</td><td>in</td><td>mst：1=允许 DENY</td></tr>
+      <tr><td class="sig">reg_err_en</td><td>1</td><td>in</td><td>QUIESCE 时对新请求本地回错；0 则反压。不回收已在途事务</td></tr>
+      <tr><td class="sig">lbus_pwrdn</td><td>1</td><td>out</td><td>DOWN。mst → 主域对侧 bca_mst；slv → 从域对侧 bca_slv</td></tr>
+      <tr><td class="sig">intercept</td><td>1</td><td>out/in</td><td>slv 出；err_rsp / ip_fail 入</td></tr>
+      <tr><td class="sig" colspan="4"><strong>QCH 超时（仅 `ifdef ADP_QCH_TO）</strong></td></tr>
+      <tr><td class="sig">qch_to_en</td><td>1</td><td>in</td><td>1=QUIESCE 内启动超时计数</td></tr>
+      <tr><td class="sig">qch_to_lim</td><td>QCH_TO_W</td><td>in</td><td>超时周期上限。0=进入 QUIESCE 下一拍即超时</td></tr>
+      <tr><td class="sig">qch_to_mode</td><td>1</td><td>in</td><td>0=WAIT；1=ERR。超时拍采样</td></tr>
+      <tr><td class="sig">irq_qch_to</td><td>1</td><td>out</td><td>超时中断（电平、粘滞）</td></tr>
+      <tr><td class="sig" colspan="4"><strong>LiteBus IP 侧</strong></td></tr>
+      <tr><td class="sig">req_r_data/valid/ready</td><td>EXT_CMD_W / 1</td><td>*</td><td>读 CMD。mst 为 out</td></tr>
+      <tr><td class="sig">req_w_data/valid/ready</td><td>EXT_REQ_W / 1</td><td>*</td><td>{CMD,mod,WD}</td></tr>
+      <tr><td class="sig">rsp_rd_*</td><td>—</td><td>*</td><td>读响应（slv 另有 user）</td></tr>
+      <tr><td class="sig">rsp_wr_*</td><td>—</td><td>*</td><td>写响应</td></tr>
+    </tbody>
+  </table>
+  <p class="note">未定义 <code>ADP_QCH_TO</code> 时超时四根线不存在。跨时钟由 BCA 承担。</p>
+</section>
+
+<section id="s3">
+  <h2>3. Descriptors</h2>
+  <p>LiteBus 描述符与 v0.9 §3 相同。从 REQ_W 取 CMD 必须先跳过 <code>MOD_PW</code>。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <div class="pack">
+        <span style="background:#1d4e89">qos</span>
+        <span style="background:#6b3fa0">opcode 4</span>
+        <span style="background:#1f6f64">addr</span>
+        <span style="background:#b45309">len</span>
+        <span style="background:#9a3412">txnid</span>
+        <span style="background:#3f4f4c">user</span>
+        <span style="background:#444">mod</span>
+        <span style="background:#1d4e89">data</span>
+        <span style="background:#1f6f64">strb</span>
+        <span style="background:#b45309">last</span>
+        <span style="background:#9a3412">txnid</span>
+      </div>
+      <figcaption>图 3 · REQ_W 从高位到低位。前 6 段为 CMD，mod 之后为 WD。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 3 说明</h4>
+      <ul>
+        <li><strong>CMD</strong> = <code>{qos, opcode, addr, len, txnid, user}</code> = REQ_R。</li>
+        <li><strong>必须跳过 mod</strong>：否则 addr/len/txnid 左移 MOD_PW。正确：先去掉 WD，再从 {CMD,mod} 丢掉 MOD_PW。</li>
+        <li><strong>mod</strong>：AXI4/APB 为 1-bit dummy（打包对齐，不是原子）。AXI5 才是 3-bit AWATOP[4:2]。</li>
+        <li><strong>txnid（1.8 起读写通道独立编号）</strong>：读 = 读槽 0..MAX_RD_OST-1；写 = 写槽 0..MAX_WR_OST-1。相同数值靠 RD/WR 通道区分。默认 256+256 在 ID_W=8 下合法。APB 绑 0。</li>
+      </ul>
+      <pre class="eq" style="margin-top:0.7rem">CMD   = {qos, opcode, addr, len, txnid, user}
+WD    = {data, strb, last, txnid}
+REQ_W = {CMD, mod, WD}
+live_cmd = req_w[WD +: CMD+MOD][MOD +: CMD]</pre>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>opcode</th><th>值</th><th>方向</th><th>谁使用</th></tr></thead>
+    <tbody>
+      <tr><td><code>LB_OP_RD</code></td><td>4'h1</td><td>REQ_R</td><td>AXI4 / AXI5 / APB</td></tr>
+      <tr><td><code>LB_OP_WR</code></td><td>4'h8</td><td>REQ_W</td><td>AXI4 / AXI5 / APB</td></tr>
+      <tr><td>ATOMIC_STORE / LOAD / SWAP / COMPARE</td><td>C / D / E / F</td><td>REQ_W</td><td><strong>仅 AXI5</strong></td></tr>
+    </tbody>
+  </table>
+  <p>响应：<code>LB_RESP_OK</code>→OKAY；AXI5 的 <code>ATOMIC_FAIL</code>→<code>ATOMIC_FAIL_RESP</code>（默认 EXOKAY）；其余→SLVERR / <code>LB_RESP_FAIL</code>。AXI4 不解码原子响应。</p>
+</section>
+
+<section id="s4">
+  <h2>4. Design Constraints</h2>
+  <ul>
+    <li>未与适配器完成 Q-Channel 握手就单独复位/下电一侧 BCA，可能导致对侧指针失配。须先握手，再靠 <code>lbus_pwrdn</code> 清指针。</li>
+    <li><code>reg_qdeny_en</code> / <code>reg_err_en</code> /（若存在）<code>qch_to_en</code> / <code>qch_to_lim</code> / <code>qch_to_mode</code> 不应在 <code>qreqn</code> 拉低与握手完成之间翻转。</li>
+    <li>AXI：仅整宽 INCR，<code>*size=log2(DATA_W/8)</code>，地址按 DATA_W 对齐。禁止窄带、WRAP。<code>MAX_RD_OST</code>/<code>MAX_WR_OST</code> ≥1 且各自 ≤ <code>2**ID_W</code>。同一 AXI ID 未完成前反压（无 ROB）。</li>
+    <li>AXI4 顶层禁止出现 <code>awatop</code>、<code>AXI5_EN</code>、原子 opcode、<code>adapter_atomic</code>。</li>
+    <li>AXI5 原子：<code>awlen=0</code>。LOAD/SWAP/COMPARE 与普通读串行共用 R。</li>
+    <li>APB：<code>len=0</code>。mst 只在 SETUP（<code>PSEL &amp;&amp; !PENABLE</code>）捕获。</li>
+    <li>从域真正断电后，请求必须在 adapter_err 被截住，不得进入从域 bca_slv。</li>
+    <li>超时功能必须用 <code>`ifdef ADP_QCH_TO</code> 包起来；未定义时无超时端口、无计数器。</li>
+    <li>ERR 模式本地回错后，迟到的响应必须丢弃，且对应表项在对侧响应到达（或 DOWN/复位）前不得复用，见 7.4.4。</li>
+    <li>无内部异步 fifo。WRAP+SPLIT 均不实现。与 <code>rtl/adapter_*.v</code> <strong>不可混编</strong>。</li>
+  </ul>
+</section>
+
+<section id="s5">
+  <h2>5. Requirements / Feature Description</h2>
+  <p>适配器把 AMBA 转换成 LiteBus REQ/RSP，并允许 PPU 经 Q-Channel 安全下电。异步隔离由 BCA 完成。</p>
+
+  <h3 id="s51">5.1 Feature List</h3>
+  <ul>
+    <li>AXI4、AXI5（AWATOP）、APB4 双向转换；AXI4 / AXI5 为 <strong>独立顶层</strong>。</li>
+    <li>AXI 多 outstanding：<code>MAX_RD_OST</code> / <code>MAX_WR_OST</code> <strong>例化参数传入</strong>，默认 <strong>256 / 256</strong>。txnid = 本通道表项索引。</li>
+    <li>Q-Channel：mst 可 DENY / 反压 / 本地回错；slv 等在途完成后 DOWN。</li>
+    <li><strong>QCH 握手超时</strong>（独立 feature，宏 <code>ADP_QCH_TO</code>）：<code>qch_to_en</code> + <code>qch_to_lim</code>；超时后 <code>qch_to_mode</code> 选择 WAIT 或 ERR；上报 <code>irq_qch_to</code>。</li>
+    <li>slv <code>lbus_pwrdn</code> → 从域对侧 <code>bca_slv</code> 清指针，并作 <code>intercept</code>。</li>
+    <li>从域断电兜底：常上电 <code>adapter_err_rsp</code>（D23）。</li>
+    <li><strong>不包含</strong>：窄带、WRAP、ROB、同 ID 重映射、mst SPLIT、slv SBS、Addition。AXI4 <strong>不包含</strong> 原子。</li>
+  </ul>
+
+  <h3 id="s52">5.2 Interface（参数）</h3>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code></td><td>32</td><td>地址</td></tr>
+      <tr><td><code>DATA_W</code></td><td>64 / APB 32</td><td>等于 LiteBus 数据宽</td></tr>
+      <tr><td><code>LEN_W</code></td><td>8</td><td>AXI / LiteBus len</td></tr>
+      <tr><td><code>ID_W</code></td><td>8 / APB 1</td><td>AXI ID / LiteBus txnid</td></tr>
+      <tr><td><code>MOD_PW</code></td><td>1 / AXI5 为 3</td><td>REQ_W 中 mod。AXI4 固定 dummy 1</td></tr>
+      <tr><td><code>PSTRB_EN</code></td><td>1</td><td>APB mst</td></tr>
+      <tr><td><code>SYNC_FF</code></td><td>2</td><td>err_rsp 同步级数</td></tr>
+      <tr><td><code>ATOMIC_FAIL_RESP</code></td><td>EXOKAY</td><td><strong>仅 AXI5</strong></td></tr>
+      <tr><td><code>HAS_QDENY</code></td><td>mst 1 / slv 0</td><td>qch 参数</td></tr>
+      <tr><td><code>MAX_RD_OST</code></td><td>256</td><td>AXI 读 outstanding；<strong>例化传入</strong></td></tr>
+      <tr><td><code>MAX_WR_OST</code></td><td>256</td><td>AXI 写 outstanding；<strong>例化传入</strong></td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code>；<code>qch_to_lim</code> 位宽</td></tr>
+    </tbody>
+  </table>
+  <p>无 <code>NARROW_EN</code> / <code>SPLIT_EN</code> / <code>SBS_EN</code> / <code>QCH_EN</code> / <code>AXI5_EN</code> / <code>QCH_TO_CYCLES</code>。本目录 QCH 常开；AXI5 用独立模块。</p>
+</section>
+
+<section id="s6">
+  <h2>6. Open Issues</h2>
+  <ul>
+    <li><code>lbus_pwrdn</code> 由 LiteBus 侧 BCA 消费的握手时序属互联协作。</li>
+    <li>不实现 Addition；与冻结 ext_core 无 addition 针脚一致。</li>
+    <li>ERR 模式下若对侧响应永远不来、且 PPU 又取消下电，对应表项保持占用直到 RSP 或复位，可能暂时降低有效 ost。属预期行为。</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2>7. Hardware Implementation</h2>
+  <p>协议适配见 7.1–7.3；QCH 见 7.4（超时为 7.4.4）；AXI5 原子见 7.5；从域回错见 7.6–7.7。</p>
+  <pre class="eq">iverilog -g2005 -I rtl -I rtl/simple -o t.vvp rtl/simple/adapter_*.v
+iverilog -g2005 -DADP_QCH_TO -I rtl -I rtl/simple -o t.vvp rtl/simple/adapter_*.v</pre>
+  <p>第一条无超时端口；第二条打开超时 feature。只编本目录，勿加入 <code>rtl/adapter_*.v</code>。</p>
+
+  <h3 id="s71">7.1 AXI4 Adapter</h3>
+  <p>模块：<code>adapter_mst_axi4</code>、<code>adapter_slv_axi4</code>。<strong>纯 AXI4</strong>：无 <code>awatop</code>、无 <code>AXI5_EN</code>、无 <code>ATOMIC_FAIL_RESP</code>、不例化 <code>adapter_atomic</code>、不识别原子 opcode。</p>
+
+  <h4 id="s711">7.1.1 I/O</h4>
+  <p><strong>Parameters</strong></p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code></td><td>32</td><td>地址</td></tr>
+      <tr><td><code>DATA_W</code></td><td>64</td><td>数据 = LiteBus 数据宽</td></tr>
+      <tr><td><code>LEN_W</code></td><td>8</td><td>burst len</td></tr>
+      <tr><td><code>ID_W</code></td><td>8</td><td>AXI ID。默认 256 ost 要求 ID_W≥8</td></tr>
+      <tr><td><code>MOD_PW</code></td><td>1</td><td>dummy mod（打包对齐，非 AXI5）</td></tr>
+      <tr><td><code>MAX_RD_OST</code></td><td>256</td><td>读 ost 表深，例化传入，≥1</td></tr>
+      <tr><td><code>MAX_WR_OST</code></td><td>256</td><td>写 ost 表深，例化传入，≥1</td></tr>
+      <tr><td><code>QOS_PW</code> / <code>USER_CMD_PW</code></td><td>1</td><td>CMD 侧带</td></tr>
+      <tr><td><code>USER_RSP_PW</code></td><td>1</td><td>仅 slv RSP user</td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code></td></tr>
+      <tr><td><code>W_BYTES</code> / <code>EXT_*</code></td><td>派生</td><td><code>W_BYTES=DATA_W/8</code></td></tr>
+    </tbody>
+  </table>
+  <p>约束：<code>MAX_RD_OST ≤ 2**ID_W</code> 且 <code>MAX_WR_OST ≤ 2**ID_W</code>。</p>
+  <pre class="eq">adapter_mst_axi4 #(.MAX_RD_OST(256), .MAX_WR_OST(256), .QCH_TO_W(16)) u_mst (...);
+adapter_slv_axi4 #(.MAX_RD_OST(256), .MAX_WR_OST(256), .QCH_TO_W(16)) u_slv (...);</pre>
+  <p><strong>Signals</strong>（除第 2 章外；<strong>无 awatop</strong>）</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir (mst)</th><th>Dir (slv)</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">awid / awaddr / awlen</td><td>ID_W / ADDR_W / LEN_W</td><td>in</td><td>out</td><td>—</td></tr>
+      <tr><td class="sig">awsize / awburst</td><td>3 / 2</td><td>in</td><td>out</td><td>size=native，burst=INCR</td></tr>
+      <tr><td class="sig">awvalid / awready</td><td>1</td><td>in / out</td><td>out / in</td><td>—</td></tr>
+      <tr><td class="sig">wdata / wstrb / wlast</td><td>DATA_W / W_BYTES / 1</td><td>in</td><td>out</td><td>—</td></tr>
+      <tr><td class="sig">wvalid / wready</td><td>1</td><td>in / out</td><td>out / in</td><td>—</td></tr>
+      <tr><td class="sig">bid / bresp / bvalid / bready</td><td>—</td><td>out… / in bready</td><td>in… / out bready</td><td>—</td></tr>
+      <tr><td class="sig">arid / araddr / arlen / arsize / arburst</td><td>—</td><td>in</td><td>out</td><td>—</td></tr>
+      <tr><td class="sig">arvalid / arready</td><td>1</td><td>in / out</td><td>out / in</td><td>—</td></tr>
+      <tr><td class="sig">rid / rdata / rresp / rlast / rvalid / rready</td><td>—</td><td>out… / in rready</td><td>in… / out rready</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p>LiteBus REQ/RSP 见第 2 章。slv 另有 <code>rsp_*_user</code>、<code>intercept</code>。</p>
+
+  <h4 id="s712">7.1.2 Function Description</h4>
+  <p>AXI4 整宽 INCR 与 LiteBus 互转。读 txnid = 读槽号，写 txnid = 写槽号。同一 AXI ID 未完成前 ready=0。</p>
+  <ul>
+    <li><code>reg_qdeny_en=1</code> 且 busy：DENY。</li>
+    <li><code>reg_qdeny_en=0</code> 且 <code>reg_err_en=0</code>：新 AR/AW 反压，在途走完后 DOWN。</li>
+    <li><code>reg_err_en=1</code>：新请求不进 LiteBus，AXI 回 SLVERR；<strong>已收下</strong>的仍发完 REQ（与超时 ERR 不同，见 7.4.4）。</li>
+    <li>slv：QUIESCE 等 AXI 在途为 0 再 DOWN；之后 ip_fail / err_rsp 回 FAIL。</li>
+  </ul>
+
+  <h4 id="s713">7.1.3 Hardware Description</h4>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+flowchart TB
+  subgraph AXI["AXI4 slave 口"]
+    AR[AR] --> ADM[准入：ost 表未满且同 ID 空闲]
+    AW[AW] --> ADM
+    W[W] --> PACK["打包 CMD+dummy mod+WD"]
+  end
+  QCH[adapter_qch]
+  QCH -->|quiesce / err_mode / pwrdn| ADM
+  PACK --> REQW[REQ_W]
+  ADM --> REQR[REQ_R]
+  RSPR[RSP_RD] --> MUXR[按读槽填 RID/R]
+  RSPW[RSP_WR] --> MUXB[按写槽填 BID/B]
+  QCH --> TR[新请求截断：SLVERR]
+  TR --> MUXR
+  TR --> MUXB
+      </pre>
+      <figcaption>图 7-1 · mst AXI4 内部数据通路。无 atomic 块。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-1 说明（mst AXI4）</h4>
+      <ol>
+        <li><strong>准入 ADM</strong>：读/写表有空槽；该 AXI ID 无未完成事务；QCH 未反压；err_mode 未截断。全部满足才 ready=1。</li>
+        <li><strong>写打包</strong>：每一拍 W 一拍 REQ_W。txnid 来自该笔 AW 的写槽。wlast 只影响 WD.last。</li>
+        <li><strong>读</strong>：AR 后只发一次 REQ_R（len=arlen），R 拍全部来自 RSP_RD。</li>
+        <li><strong>响应多路</strong>：RSP_*.txnid 索引表取出 AXI ID。ERR 模式迟到响应丢弃（7.4.4）。</li>
+        <li><strong>截断 TR</strong>：只服务 reg_err_en=1 的<strong>新</strong> AR/AW。已在途仍等 RSP。</li>
+        <li><strong>没有 adapter_atomic</strong>：AXI4 图故意去掉 AWATOP 译码。</li>
+      </ol>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+flowchart LR
+  U[从域 bca_mst] --> FAIL[ip_fail]
+  QCH[qch] -->|lbus_pwrdn| FAIL
+  QCH -->|lbus_pwrdn| BS2[从域对侧 bca_slv 清指针]
+  FAIL --> WR[写 ost 表 0..MAX_WR_OST-1]
+  FAIL --> RD[读 ost 表 0..MAX_RD_OST-1]
+  WR --> AXIW[AXI master AW/W/B]
+  RD --> AXIR[AXI master AR/R]
+      </pre>
+      <figcaption>图 7-1b · slv AXI4：FAIL 在协议 FSM 之前。无原子 R 旁路。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-1b 说明（slv AXI4）</h4>
+      <ol>
+        <li>DOWN 后新 REQ 被 ip_fail 拦下。QUIESCE 期间 lbus_pwrdn 仍 0，协议侧自己停接新 REQ，让已发出的 AXI 走完。</li>
+        <li>读、写表编号都从 0 起。写可在上一笔 B 未回时再发 AW（W 仍按序）。</li>
+        <li>busy = 读 ost 或写 ost 非 0。这是 QCH 能否 DOWN 的依据。</li>
+        <li>AXI4 slv 不会把写通道接到 R。</li>
+      </ol>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant M as AXI Master
+  participant MA as adapter_mst
+  participant LB as LiteBus
+  participant SA as adapter_slv
+  participant S as AXI Slave
+  M->>MA: AW
+  MA->>MA: 占写槽 txnid=i
+  M->>MA: W beats wlast
+  MA->>LB: REQ_W 每拍 last=wlast
+  LB->>SA: REQ_W
+  SA->>SA: 占写槽 txnid=i
+  SA->>S: AW then W
+  S->>SA: B
+  SA->>LB: RSP_WR txnid=i
+  LB->>MA: RSP_WR txnid=i
+  MA->>M: B bid=槽内 AXI ID
+      </pre>
+      <figcaption>图 7-1c · AXI 写。BCA / err 上电透传省略。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-1c 说明</h4>
+      <ol>
+        <li>mst 在 AW 握手成功时分配写槽 i，此后该笔所有 REQ_W 都带 txnid=i。</li>
+        <li>无 SPLIT：len=awlen，最后一拍 last=wlast。</li>
+        <li>B 只在 RSP_WR 握手后出现。第二笔不同 ID 的 AW 可在第一笔 B 之前发生（写表未满）。</li>
+      </ol>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant M as AXI Master
+  participant MA as adapter_mst
+  participant LB as LiteBus
+  participant SA as adapter_slv
+  participant S as AXI Slave
+  M->>MA: AR
+  MA->>LB: REQ_R txnid=j len=arlen
+  LB->>SA: REQ_R
+  SA->>S: AR
+  S->>SA: R beats rlast
+  SA->>LB: RSP_RD 每拍 txnid=j
+  LB->>MA: RSP_RD
+  MA->>M: R rid=槽内 AXI ID
+      </pre>
+      <figcaption>图 7-1d · AXI 读。AR 后只发一次 REQ_R。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-1d 说明</h4>
+      <ol>
+        <li>不是每拍 R 发一次请求。txnid=j 贯穿该 burst 所有 RSP_RD。</li>
+        <li>可在上一笔未 rlast 时再发另一笔 AR（不同 ID）。</li>
+        <li>读槽与写槽独立，互不占用对方的 256 深度。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3 id="s72">7.2 AXI5 Adapter</h3>
+  <p>独立顶层：<code>adapter_mst_axi5</code> / <code>adapter_slv_axi5</code>。含 <code>awatop[4:0]</code> 与 <code>adapter_atomic</code>。<strong>不</strong>通过改 axi4 的 <code>AXI5_EN</code> 实现。ost / QCH / 超时接口与 AXI4 相同（默认 ost 同样 256）。</p>
+
+  <h4 id="s721">7.2.1 I/O</h4>
+  <p><strong>Parameters</strong>（相对 7.1.1 增加/覆盖）</p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>MOD_PW</code></td><td>3</td><td>AWATOP[4:2]</td></tr>
+      <tr><td><code>ATOMIC_FAIL_RESP</code></td><td>EXOKAY</td><td>比较失败映射</td></tr>
+      <tr><td><code>MAX_RD_OST</code> / <code>MAX_WR_OST</code></td><td>256</td><td>同 AXI4 语义</td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code></td></tr>
+      <tr><td>其余</td><td>同 7.1.1</td><td>ADDR/DATA/LEN/ID 等</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Signals</strong>：在 7.1.1 基础上增加 <code>awatop[4:0]</code>（mst 入 / slv 出）。REQ_W 因 MOD_PW=3 比 AXI4 宽 2 bit。</p>
+
+  <h4 id="s722">7.2.2 Function Description</h4>
+  <p>STORE 仅 B；LOAD/SWAP/COMPARE 为 B+R（rid=awid）。QCH 与 AXI4 相同。FAIL 路径原子仍先 RSP_RD 再 RSP_WR。普通 INCR 读写与 7.1 相同。</p>
+
+  <h4 id="s723">7.2.3 Hardware Description</h4>
+  <p>mst 例化 <code>adapter_atomic</code>。slv：<code>awatop = opcode[3] ? {mod[2:0], opcode[1:0]} : 0</code>。原子占用 R 时不发新 AR。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant M as AXI5 Master
+  participant MA as adapter_mst_axi5
+  participant LB as LiteBus
+  participant SA as adapter_slv_axi5
+  participant S as AXI5 Slave
+  M->>MA: AW AWATOP=LOAD + W
+  MA->>LB: REQ_W opcode=D mod=awatop[4:2]
+  LB->>SA: REQ_W
+  SA->>S: AW awatop + W
+  S->>SA: R then B
+  SA->>LB: RSP_RD then RSP_WR
+  LB->>MA: RSP_RD / RSP_WR
+  MA->>M: R and B
+      </pre>
+      <figcaption>图 7-2 · 原子 LOAD。只发生在 axi5 顶层。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-2 说明</h4>
+      <ol>
+        <li>AXI4 模块既没有 awatop 脚，也不会发出 opcode C–F。</li>
+        <li>LOAD：awlen=0，单拍 REQ_W。成功时先 RSP_RD 再 RSP_WR，AXI 侧先 R 后 B，rid=awid。</li>
+        <li>STORE 无 R。FAIL 保持先 RD 后 WR，避免上游卡在等 R。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3 id="s73">7.3 APB Adapter</h3>
+  <p>APB4（含 PSTRB）：<code>adapter_mst_apb</code> / <code>adapter_slv_apb</code>。单事务，无 ost 表。</p>
+
+  <h4 id="s731">7.3.1 I/O</h4>
+  <p><strong>Parameters</strong></p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code></td><td>32</td><td>地址</td></tr>
+      <tr><td><code>DATA_W</code></td><td>32</td><td>APB 数据宽</td></tr>
+      <tr><td><code>LEN_W</code></td><td>8</td><td>LiteBus len，本实现恒 0</td></tr>
+      <tr><td><code>ID_W</code></td><td>1</td><td>txnid 绑 0</td></tr>
+      <tr><td><code>PSTRB_EN</code></td><td>1</td><td>仅 mst；0 则写 strb 全 1</td></tr>
+      <tr><td><code>MOD_PW</code></td><td>1</td><td>dummy</td></tr>
+      <tr><td><code>QOS_PW</code> / <code>USER_CMD_PW</code> / <code>USER_RSP_PW</code></td><td>1</td><td>CMD / RSP user</td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code></td></tr>
+      <tr><td><code>W_BYTES</code> / <code>EXT_*</code></td><td>派生</td><td><code>W_BYTES=DATA_W/8</code></td></tr>
+    </tbody>
+  </table>
+  <p>无 MAX_RD_OST / MAX_WR_OST。</p>
+  <p><strong>Signals</strong></p>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir (mst)</th><th>Dir (slv)</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">psel / penable / pwrite</td><td>1</td><td>in</td><td>out</td><td>—</td></tr>
+      <tr><td class="sig">paddr / pwdata / pstrb</td><td>ADDR_W / DATA_W / W_BYTES</td><td>in</td><td>out</td><td>PSTRB_EN=0 时 mst 写 strb 全 1</td></tr>
+      <tr><td class="sig">prdata / pready / pslverr</td><td>DATA_W / 1 / 1</td><td>out</td><td>in</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h4 id="s732">7.3.2 Function Description</h4>
+  <p>单拍 len=0。mst SETUP 捕获后发 1 拍 LiteBus，ACCESS 上 PREADY=0 直到 RSP。QCH：busy=state≠IDLE。slv 写优先；下电等当前 APB 完成后再 DOWN。</p>
+
+  <h4 id="s733">7.3.3 Hardware Description</h4>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> REQ: SETUP
+  IDLE --> HOLD: err_mode SETUP
+  REQ --> WAIT: req handshake
+  WAIT --> HOLD: LiteBus RSP
+  HOLD --> IDLE: PSEL=0
+      </pre>
+      <figcaption>图 7-3 · mst APB FSM。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-3 说明</h4>
+      <ol>
+        <li>只在 SETUP（PSEL &amp;&amp; !PENABLE）采样。ACCESS 阶段不重新发 LiteBus。</li>
+        <li>REQ 只握手 1 拍。WAIT 等 RSP。HOLD 才 PREADY=1。</li>
+        <li>超时 ERR 若发生在 WAIT：本地 PSLVERR 进 HOLD，迟到 LiteBus RSP 丢弃。</li>
+      </ol>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> SETUP: 收下 REQ
+  SETUP --> ACCESS: 1 拍
+  ACCESS --> RSP: PREADY
+  RSP --> IDLE: LiteBus rsp ready
+      </pre>
+      <figcaption>图 7-3b · slv APB FSM。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-3b 说明</h4>
+      <p>RSP 态把“APB 从机已经 PREADY”和“LiteBus 响应已经发出”拆开。PSLVERR→LB_RESP_FAIL。busy 在离开 IDLE 后为 1。</p>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant P as APB Master
+  participant MA as mst_apb
+  participant LB as LiteBus
+  participant SA as slv_apb
+  participant S as APB Slave
+  P->>MA: SETUP
+  MA->>LB: REQ_W
+  Note over P,MA: ACCESS PREADY=0
+  LB->>SA: REQ_W
+  SA->>S: SETUP/ACCESS
+  S->>SA: PREADY
+  SA->>LB: RSP_WR
+  LB->>MA: RSP_WR
+  MA->>P: PREADY=1
+      </pre>
+      <figcaption>图 7-3c · APB 写。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-3c 说明</h4>
+      <p>主机在 ACCESS 上看见 PREADY=0 直到整条链路 RSP 回来。读路径换成 REQ_R / PRDATA / RSP_RD。</p>
+    </div>
+  </div>
+
+  <h3 id="s74">7.4 Power Q-Channel</h3>
+  <p>模块 <code>adapter_qch</code>。无独立 QCH 时钟。超时见 7.4.4，整块用宏隔离。</p>
+
+  <h4 id="s741">7.4.1 I/O</h4>
+  <p><strong>Parameters</strong></p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>HAS_QDENY</code></td><td>1</td><td>mst=1，slv=0</td></tr>
+      <tr><td><code>QCH_TO_W</code></td><td>16</td><td>仅 <code>ADP_QCH_TO</code>；<code>qch_to_lim</code> 与内部计数器位宽</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Signals</strong>（基础握手，始终存在）</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">clk / rst_n</td><td>1</td><td>in</td><td>—</td></tr>
+      <tr><td class="sig">qreqn</td><td>1</td><td>in</td><td>下电请求（低有效）</td></tr>
+      <tr><td class="sig">reg_qdeny_en</td><td>1</td><td>in</td><td>允许 DENY</td></tr>
+      <tr><td class="sig">reg_err_en</td><td>1</td><td>in</td><td>QUIESCE 时对新请求 err_mode</td></tr>
+      <tr><td class="sig">busy</td><td>1</td><td>in</td><td>协议侧 AXI/APB 尚未完成</td></tr>
+      <tr><td class="sig">qacceptn / qdeny / qactive</td><td>1</td><td>out</td><td>握手与活性</td></tr>
+      <tr><td class="sig">lbus_pwrdn</td><td>1</td><td>out</td><td>st==DOWN</td></tr>
+      <tr><td class="sig">o_quiesce / o_err_mode</td><td>1</td><td>out</td><td>给协议 FSM</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Signals</strong>（仅 <code>`ifdef ADP_QCH_TO</code>）</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">qch_to_en</td><td>1</td><td>in</td><td>超时功能使能</td></tr>
+      <tr><td class="sig">qch_to_lim</td><td>QCH_TO_W</td><td>in</td><td>计数上限</td></tr>
+      <tr><td class="sig">qch_to_mode</td><td>1</td><td>in</td><td>0=WAIT，1=ERR</td></tr>
+      <tr><td class="sig">irq_qch_to</td><td>1</td><td>out</td><td>超时 IRQ</td></tr>
+    </tbody>
+  </table>
+
+  <h4 id="s742">7.4.2 Function Description</h4>
+  <table>
+    <thead><tr><th>deny 权限</th><th>busy</th><th>行为</th><th>qdeny</th><th>qacceptn</th></tr></thead>
+    <tbody>
+      <tr><td>允许</td><td>0</td><td>立即 DOWN</td><td>0</td><td>拉低</td></tr>
+      <tr><td>允许</td><td>1</td><td>DENY，不 stall 在途</td><td>拉高</td><td>保持 1</td></tr>
+      <tr><td>禁止</td><td>0</td><td>立即 DOWN</td><td>0</td><td>拉低</td></tr>
+      <tr><td>禁止</td><td>1</td><td>QUIESCE：反压或对新请求本地回错，在途完成后 DOWN</td><td>0</td><td>完成后拉低</td></tr>
+    </tbody>
+  </table>
+  <p>立即 DOWN / DENY <strong>不启动</strong>超时计数。<code>reg_err_en</code> 只改变 QUIESCE 期间<strong>新请求</strong>是反压还是 SLVERR，不会结束已经发出去的 LiteBus 事务。要把已在途事务清掉，必须走 7.4.4 的 ERR 模式。</p>
+
+  <h4 id="s743">7.4.3 Hardware Description</h4>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> UP
+  UP --> DOWN: qreqn=0 且 busy=0
+  UP --> DENY: 在途且可拒绝
+  UP --> QUIESCE: 在途且不可拒绝
+  DENY --> UP: qreqn=1
+  QUIESCE --> DOWN: busy=0
+  QUIESCE --> UP: qreqn=1
+  DOWN --> UP: qreqn=1
+      </pre>
+      <figcaption>图 7-4 · QCH 四态。超时不增加新状态。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-4 说明</h4>
+      <ol>
+        <li><strong>UP</strong>：正常工作。qacceptn=1，lbus_pwrdn=0。</li>
+        <li><strong>DENY</strong>：仅 mst。告诉 PPU 现在不能下电；AXI/APB 继续。离开 DENY 必须 qreqn=1。</li>
+        <li><strong>QUIESCE</strong>：停接新业务（或 err_mode 下新请求本地回错）。o_quiesce = QUIESCE &amp;&amp; !reg_err_en；o_err_mode = QUIESCE &amp;&amp; reg_err_en。qactive = busy || QUIESCE。</li>
+        <li><strong>DOWN</strong>：qacceptn=0，lbus_pwrdn=1。只有 busy=0 才能进来。超时 ERR 的目的就是创造这个 busy=0。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h4 id="s744">7.4.4 QCH 超时（独立 feature，<code>ADP_QCH_TO</code>）</h4>
+  <p>未定义宏：本节电路不存在，超时端口不出现。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+flowchart TD
+  A["qreqn=0 且 st==QUIESCE"] --> B{"qch_to_en==1?"}
+  B -->|否| Z["不计时，行为同无超时"]
+  B -->|是| C["cnt 每拍 +1"]
+  C --> D{"cnt == qch_to_lim?"}
+  D -->|否| C
+  D -->|是| E["irq_qch_to=1"]
+  E --> F{"qch_to_mode"}
+  F -->|0 WAIT| W["保持 QUIESCE，继续等 busy=0"]
+  F -->|1 ERR| R["协议侧本地回错，清 AXI 可见 ost"]
+  W --> G{"busy=0 或 qreqn=1"}
+  R --> G
+  G -->|busy=0| DN[DOWN / 清 IRQ]
+  G -->|qreqn=1| UP[UP / 清 IRQ]
+      </pre>
+      <figcaption>图 7-4b · 超时只发生在 QUIESCE；不强制改四态边。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-4b 说明</h4>
+      <ol>
+        <li>计数器只在 QUIESCE 且 qch_to_en=1 时运行。离开 QUIESCE 清零。</li>
+        <li>qch_to_lim=0：进入 QUIESCE 的下一拍即超时（仍要求使能）。</li>
+        <li>WAIT 与 ERR 都不增加新的 QCH 状态。WAIT 完全依赖真实在途结束；ERR 通过让协议把 busy 拉低，从而走原来的 QUIESCE→DOWN。</li>
+        <li>irq_qch_to 粘滞：超时置位；DOWN、qreqn=1 或复位清除。模式只在超时拍采样。</li>
+      </ol>
+    </div>
+  </div>
+  <p><strong>模式 0 — WAIT</strong>：协议侧无额外动作。软件可继续等，或把 qreqn 拉回 1 放弃下电。</p>
+  <p><strong>模式 1 — ERR</strong>：已经向对侧发出的请求稍后还可能回来。AXI/APB/LiteBus 都只允许每个事务完成一次，因此本地回错之后迟到响应必须<strong>丢弃</strong>，且该表项在对侧响应到来前<strong>不能发给新事务</strong>。</p>
+  <table>
+    <thead><tr><th>位</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>axi_done</code></td><td>已经向 AMBA 完成（R last / B / PREADY）</td></tr>
+      <tr><td><code>lbus_done</code></td><td>已经与 LiteBus 完成对应 RSP（或 slv 已发出 FAIL）</td></tr>
+    </tbody>
+  </table>
+  <p>QCH <code>busy</code> 只看 <code>!axi_done</code> 的槽。ERR 后 busy 可以变 0，允许 DOWN；LiteBus 迟到响应在后台丢弃。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant M as AXI Master
+  participant MA as adapter_mst
+  participant LB as LiteBus
+  Note over MA: 写槽 i 已发 REQ_W，等 RSP_WR
+  Note over MA: QUIESCE 超时 qch_to_mode=ERR
+  MA->>M: B SLVERR bid=原 AW ID
+  Note over MA: axi_done=1 busy 可清零 → DOWN
+  LB-->>MA: RSP_WR txnid=i 迟到
+  MA->>MA: 丢弃：rsp_wr_ready=1 且不上 AXI
+  Note over MA: lbus_done=1 后才释放槽 i
+      </pre>
+      <figcaption>图 7-4c · mst ERR 后迟到的 LiteBus 写响应。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-4c 说明</h4>
+      <ol>
+        <li>主机已经拿到 B，禁止再出第二次 B。迟到 RSP_WR 只握手吃掉。</li>
+        <li>读同理：补齐剩余 R 拍（SLVERR + 最后 rlast），迟到 RSP_RD 丢弃。</li>
+        <li>已接受的 AW 必须最终给 B；未接受的 W 反压。</li>
+        <li>axi_done &amp;&amp; !lbus_done 期间该 txnid 仍占用。若 PPU 取消下电，新 AW/AR 不得拿到这个槽，否则会吃到旧 RSP。</li>
+        <li>真正 DOWN 后 lbus_pwrdn 清 BCA，残留 RSP 不再进入本模块。</li>
+      </ol>
+    </div>
+  </div>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+sequenceDiagram
+  participant LB as LiteBus
+  participant SA as adapter_slv
+  participant S as AXI Slave
+  Note over SA: 已向 S 发 AW，等 B；QUIESCE 超时 ERR
+  SA->>LB: RSP_WR FAIL 对应 txnid
+  Note over SA: 对 LiteBus 而言事务已结束，busy 可清
+  S-->>SA: B 迟到
+  SA->>SA: 丢弃 B，不上 LiteBus
+      </pre>
+      <figcaption>图 7-4d · slv ERR 后迟到的 AXI B。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-4d 说明</h4>
+      <ol>
+        <li>slv 是 AXI master，无法撤销已发出的 AR/AW。ERR = 放弃等待下游，立刻向上游回 FAIL，以便 DOWN。</li>
+        <li>IP Slave 随后给出的 R/B 丢弃。若紧接着 DOWN，从域断电，这些 AXI 边沿也会消失。</li>
+        <li>APB slv：WAIT 中超时则向 LiteBus 回 FAIL，下游 PREADY 迟到则忽略。</li>
+      </ol>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th></th><th>reg_err_en（QUIESCE 新请求）</th><th>qch_to_mode=ERR（超时）</th></tr></thead>
+    <tbody>
+      <tr><td>作用对象</td><td>尚未接受的新 AR/AW/SETUP</td><td><strong>已经在途</strong> 的 ost</td></tr>
+      <tr><td>是否等超时</td><td>否</td><td>要 qch_to_en 且计满 qch_to_lim</td></tr>
+      <tr><td>迟到响应</td><td>无（没发过 LiteBus）</td><td>必须丢弃并锁槽</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="s75">7.5 Atomic</h3>
+  <p>模块 <code>adapter_atomic</code>。纯组合。<strong>仅 adapter_mst_axi5 例化</strong>。AXI4 编译单元不得引用本模块。</p>
+  <p><strong>Parameters</strong></p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>MOD_PW</code></td><td>3</td><td><code>o_mod</code> 位宽</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Signals</strong></p>
+  <table>
+    <thead><tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">i_awatop</td><td>5</td><td>in</td><td>AXI5 AWATOP</td></tr>
+      <tr><td class="sig">o_opcode</td><td>4</td><td>out</td><td>STORE/LOAD/SWAP/COMPARE</td></tr>
+      <tr><td class="sig">o_need_r</td><td>1</td><td>out</td><td>STORE=0，其余=1</td></tr>
+      <tr><td class="sig">o_mod</td><td>MOD_PW</td><td>out</td><td>awatop[4:2]</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th>awatop[1:0]</th><th>opcode</th><th>o_need_r</th></tr></thead>
+    <tbody>
+      <tr><td><code>00</code></td><td>STORE <code>C</code></td><td>0</td></tr>
+      <tr><td><code>01</code></td><td>LOAD <code>D</code></td><td>1</td></tr>
+      <tr><td><code>10</code></td><td>SWAP <code>E</code></td><td>1</td></tr>
+      <tr><td><code>11</code></td><td>COMPARE <code>F</code></td><td>1</td></tr>
+    </tbody>
+  </table>
+  <p>仅 <code>|awatop!=0</code> 时 mst 写入原子 opcode；否则 <code>LB_OP_WR</code>。</p>
+
+  <h3 id="s76">7.6 ip_fail</h3>
+  <p>同域同时钟，插在 slv LiteBus 口与协议 FSM 之间。<code>intercept=lbus_pwrdn</code>（仅 DOWN 后有效）。</p>
+  <p><strong>Parameters</strong>（与对接 slv 的打包一致）</p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code> / <code>DATA_W</code> / <code>LEN_W</code> / <code>ID_W</code></td><td>32 / 64 / 8 / 8</td><td>与 slv 相同</td></tr>
+      <tr><td><code>QOS_PW</code> / <code>USER_CMD_PW</code> / <code>USER_RSP_PW</code></td><td>1</td><td>CMD / RSP</td></tr>
+      <tr><td><code>MOD_PW</code></td><td>1 / AXI5 为 3</td><td>切片 CMD 时跳过</td></tr>
+    </tbody>
+  </table>
+  <p>I/O：上游/下游各一套 REQ_R、REQ_W、RSP_RD、RSP_WR（与 err_rsp 的 u_*/d_* 同构，无 intercept_on）。</p>
+  <div class="fig-block">
+    <figure class="fig">
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> RD: intercept 且 REQ_R
+  IDLE --> WR: intercept 且 REQ_W.last 且非原子读回
+  IDLE --> AT: intercept 且 REQ_W.last 且 LOAD/SWAP/COMPARE
+  RD --> IDLE: rsp_rd handshake
+  WR --> IDLE: rsp_wr handshake
+  AT --> IDLE: 先 RSP_RD 再 RSP_WR
+      </pre>
+      <figcaption>图 7-6 · ip_fail / err_rsp 拦截 FSM。</figcaption>
+    </figure>
+    <div class="fig-explain">
+      <h4>图 7-6 说明</h4>
+      <ol>
+        <li>透传（intercept=0）：u_* 直连 d_*，FSM 停在 IDLE。</li>
+        <li>写必须见到 WD.last 才进 WR/AT；中间拍 ready=1 吞掉。</li>
+        <li><strong>AT 态只服务 AXI5 opcode C–F</strong>。AXI4 slv 不会发出这些 opcode，axi4 对接时 AT 为死态。</li>
+        <li>不支持多笔 FAIL 重叠。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3 id="s77">7.7 err_rsp</h3>
+  <p>常上电独立模块，位置见图 1-2。从域断电后的最后一道拦截。</p>
+  <p><strong>Parameters</strong></p>
+  <table>
+    <thead><tr><th>参数</th><th>默认</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADDR_W</code> / <code>DATA_W</code> / <code>LEN_W</code> / <code>ID_W</code></td><td>同 slv</td><td>打包宽度</td></tr>
+      <tr><td><code>QOS_PW</code> / <code>USER_CMD_PW</code> / <code>USER_RSP_PW</code> / <code>MOD_PW</code></td><td>同 slv</td><td>—</td></tr>
+      <tr><td><code>SYNC_FF</code></td><td>2</td><td>intercept 同步级数，≥2</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Signals</strong></p>
+  <table>
+    <thead><tr><th>Signal</th><th>Dir</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="sig">intercept</td><td>in</td><td>异步，来自 slv</td></tr>
+      <tr><td class="sig">intercept_on</td><td>out</td><td>同步+自锁后的拦截有效</td></tr>
+      <tr><td class="sig">u_req_* / u_rsp_*</td><td>*</td><td>上游接 LiteBus</td></tr>
+      <tr><td class="sig">d_req_* / d_rsp_*</td><td>*</td><td>下游接从域 bca_slv</td></tr>
+    </tbody>
+  </table>
+  <p>SYNC_FF 同步 intercept；latched 自锁；断电悬空不得清锁。FSM 同图 7-6。</p>
+</section>
+
+<section id="s8">
+  <h2>8. Low Power Design</h2>
+  <ul>
+    <li>可下电域：IP + 适配器 + 该侧 BCA。常上电：对侧 BCA、LiteBus、adapter_err。</li>
+    <li>mst：在途回收（或 DENY / 本地回错）后再 DOWN；lbus_pwrdn 清主域对侧 bca_mst。</li>
+    <li>slv：查看 AXI/APB outstanding，完成后再 DOWN；lbus_pwrdn 清从域对侧 bca_slv，并作 intercept。</li>
+    <li>定义 <code>ADP_QCH_TO</code> 时：QUIESCE 过久拉 irq_qch_to。WAIT 不强制断电；ERR 通过本地回错把 busy 拉低后再走正常 DOWN。迟到响应当丢弃。</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <h2>9. Performance</h2>
+  <p>适配器本身为同域同步逻辑。跨时钟延迟由 BCA 决定，不在本模块报价。</p>
+  <table>
+    <thead><tr><th>路径</th><th>量级（不含 BCA）</th></tr></thead>
+    <tbody>
+      <tr><td>AXI 写 AW/W → REQ_W</td><td>握手当拍打包；B 等 RSP_WR</td></tr>
+      <tr><td>AXI 读 AR → REQ_R</td><td>AR 后约 1 拍发 REQ_R；R 直通 RSP_RD</td></tr>
+      <tr><td>APB SETUP → REQ</td><td>SETUP 当拍发 LiteBus；PREADY 等整条链路 RSP</td></tr>
+      <tr><td>outstanding</td><td>读 ≤ 256（默认）+ 写 ≤ 256（默认）；无 ROB 重排</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s10">
+  <h2>10. Cost / Area</h2>
+  <p>相对全功能适配器：无窄带 packer、ROB、SPLIT/SBS、异步 fifo。面积主要是 AXI/APB FSM、ost 表（默认 256+256 项）、qch 2-bit。<code>ADP_QCH_TO</code> 打开时再加 <code>QCH_TO_W</code> 计数器、IRQ、以及 ERR 模式的 axi_done/lbus_done 与丢弃通路。未定义宏则超时相关为 0 面积。AXI4 顶层不含 atomic。</p>
+</section>
+
+<section id="s11">
+  <h2>11. DFX</h2>
+  <p>可观测：</p>
+  <ul>
+    <li><code>qacceptn / qdeny / qactive / lbus_pwrdn</code></li>
+    <li><code>o_quiesce / o_err_mode</code></li>
+    <li><code>intercept_on</code></li>
+    <li>定义 <code>ADP_QCH_TO</code> 时：<code>irq_qch_to</code>、<code>qch_to_en</code>、<code>qch_to_lim</code>、<code>qch_to_mode</code></li>
+  </ul>
+  <p>下电后仍有访问：mst 为 SLVERR 或反压；互联侧为 err_rsp 回 FAIL。未做 QCH 就复位 BCA 可能导致指针不匹配（第 4 章）。<code>irq_qch_to</code> 表示 QUIESCE 握手超时：WAIT 时查在途是否卡住；ERR 时查是否已本地回错以及是否仍有 lbus_done 未置位的孤儿槽。</p>
+</section>
+
+<section id="s12">
+  <h2>12. Patents</h2>
+  <p class="na">无单独专利项列出。</p>
+</section>
+</main>
+</div>
+</body>
+</html>
